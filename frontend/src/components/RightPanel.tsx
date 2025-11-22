@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Check, FileCode, GitPullRequest, Clock } from 'lucide-react';
 import { DiffView } from './DiffView';
 import { PRView } from './PRView';
+import { getUserColor, getUserInitials } from '@/lib/database';
 
 interface RightPanelProps {
   ticketId: string;
@@ -14,9 +15,9 @@ export function RightPanel({ ticketId, onClose }: RightPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>('plan');
 
   return (
-    <div className="w-96 border-l border-gray-300 bg-white flex flex-col shadow-lg">
+    <div className="w-96 border-l border-amber-800/20 flex flex-col shadow-lg" style={{ backgroundColor: '#F5F1EB' }}>
       {/* Header */}
-      <div className="h-14 border-b border-gray-300 flex items-center justify-between px-4 bg-gray-50">
+      <div className="h-14 border-b border-amber-800/20 flex items-center justify-between px-4" style={{ backgroundColor: '#F5F1EB' }}>
         <h2 className="text-gray-900">Details</h2>
         <button
           onClick={onClose}
@@ -27,7 +28,7 @@ export function RightPanel({ ticketId, onClose }: RightPanelProps) {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-300 px-4 bg-white">
+      <div className="border-b border-amber-800/20 px-4" style={{ backgroundColor: '#F5F1EB' }}>
         <div className="flex gap-4">
           {[
             { id: 'plan', label: 'Plan' },
@@ -53,7 +54,7 @@ export function RightPanel({ ticketId, onClose }: RightPanelProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto bg-gray-50">
+      <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#F5F1EB' }}>
         {activeTab === 'plan' && <PlanTab />}
         {activeTab === 'changes' && <DiffView />}
         {activeTab === 'pr' && <PRView />}
@@ -144,9 +145,15 @@ function PlanTab() {
         
         <div className="flex items-center gap-3 mb-3">
           <div className="relative">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center border-2 border-white shadow-sm">
-              <span className="text-white text-sm">JD</span>
-            </div>
+            {(() => {
+              const approverName = 'Jane Doe';
+              const approverColor = getUserColor(approverName);
+              return (
+                <div className={`w-9 h-9 rounded-full ${approverColor.bg} ${approverColor.text} flex items-center justify-center border border-gray-300 shadow-sm`}>
+                  <span className="text-sm font-medium">{getUserInitials(approverName)}</span>
+                </div>
+              );
+            })()}
             <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-600 rounded-full border-2 border-white flex items-center justify-center">
               <Check className="w-2.5 h-2.5 text-white" />
             </div>
@@ -159,9 +166,15 @@ function PlanTab() {
 
         <div className="flex items-center gap-3 mb-4">
           <div className="relative">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-500 to-pink-500 flex items-center justify-center border-2 border-white shadow-sm">
-              <span className="text-white text-sm">MK</span>
-            </div>
+            {(() => {
+              const pendingName = 'Mike Kim';
+              const pendingColor = getUserColor(pendingName);
+              return (
+                <div className={`w-9 h-9 rounded-full ${pendingColor.bg} ${pendingColor.text} flex items-center justify-center border border-gray-300 shadow-sm`}>
+                  <span className="text-sm font-medium">{getUserInitials(pendingName)}</span>
+                </div>
+              );
+            })()}
             <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-gray-300 rounded-full border-2 border-white flex items-center justify-center">
               <Clock className="w-2.5 h-2.5 text-gray-600" />
             </div>

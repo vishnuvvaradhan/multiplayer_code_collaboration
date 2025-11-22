@@ -12,8 +12,8 @@ import {
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Checkbox } from './ui/checkbox';
-import { LinearIssue, LinearUser, fetchLinearIssues, fetchLinearUsers, createLinearIssue } from '../lib/linear';
-import { Search, Loader2, UserPlus, Plus, Github, FolderGit2, CheckCircle2, Calendar, Clock, Circle, PlayCircle, CheckCircle, XCircle, GitMerge, AlertCircle, Copy } from 'lucide-react';
+import { LinearIssue, LinearUser, LinearTeam, LinearLabel, fetchLinearIssues, fetchLinearUsers, fetchLinearTeams, fetchLinearLabels, createLinearIssue } from '../lib/linear';
+import { Search, Loader2, UserPlus, Plus, Github, FolderGit2, CheckCircle2, Calendar, Clock, Circle, PlayCircle, CheckCircle, XCircle, GitMerge, AlertCircle, Copy, Filter, X } from 'lucide-react';
 import { createTicket, createMessage } from '../lib/database';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Textarea } from './ui/textarea';
@@ -50,6 +50,17 @@ export function TicketSelectionDialog({
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [selectedRepository, setSelectedRepository] = useState<string>('');
   const [step, setStep] = useState<'tickets' | 'users' | 'repository'>('tickets');
+  const [filters, setFilters] = useState<{
+    states: Set<string>;
+    priorities: Set<number>;
+    teams: Set<string>;
+    assignees: Set<string>;
+  }>({
+    states: new Set<string>(),
+    priorities: new Set<number>(),
+    teams: new Set<string>(),
+    assignees: new Set<string>(),
+  });
   const [githubConnected, setGithubConnected] = useState(false);
   const [githubUser, setGithubUser] = useState<{ login: string; avatar_url: string } | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -57,16 +68,29 @@ export function TicketSelectionDialog({
   const [newTicketTitle, setNewTicketTitle] = useState('');
   const [newTicketDescription, setNewTicketDescription] = useState('');
   const [newTicketPriority, setNewTicketPriority] = useState<number>(0);
+  const [newTicketTeam, setNewTicketTeam] = useState<string>('');
+  const [newTicketAssignee, setNewTicketAssignee] = useState<string>('');
+  const [newTicketLabels, setNewTicketLabels] = useState<Set<string>>(new Set());
+  const [newTicketDueDate, setNewTicketDueDate] = useState<string>('');
+  const [newTicketEstimate, setNewTicketEstimate] = useState<number>(0);
+  const [teams, setTeams] = useState<LinearTeam[]>([]);
+  const [labels, setLabels] = useState<LinearLabel[]>([]);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [ticketsData, usersData] = await Promise.all([
+      const [ticketsData, usersData, teamsData] = await Promise.all([
         fetchLinearIssues(100),
         fetchLinearUsers(),
+        fetchLinearTeams(),
       ]);
       setTickets(ticketsData);
       setUsers(usersData);
+      setTeams(teamsData);
+      // Set default team if available
+      if (teamsData.length > 0 && !newTicketTeam) {
+        setNewTicketTeam(teamsData[0].key);
+      }
       
       if (ticketsData.length === 0) {
         toast.info('No tickets found', {
@@ -132,6 +156,11 @@ export function TicketSelectionDialog({
       setNewTicketTitle('');
       setNewTicketDescription('');
       setNewTicketPriority(0);
+      setNewTicketTeam(teams.length > 0 ? teams[0].key : '');
+      setNewTicketAssignee('');
+      setNewTicketLabels(new Set());
+      setNewTicketDueDate('');
+      setNewTicketEstimate(0);
     }
   }, [open, checkGitHubConnection]);
 
@@ -152,10 +181,72 @@ export function TicketSelectionDialog({
     }
   }, [checkGitHubConnection]);
 
-  const filteredTickets = tickets.filter((ticket) =>
-    ticket.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ticket.identifier.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Get unique values for filter options
+  const uniqueStates = Array.from(new Set(tickets.map(t => t.state.name)));
+  const uniqueTeams = Array.from(new Set(tickets.map(t => t.team.key)));
+  const uniqueAssignees = Array.from(new Set(tickets.filter(t => t.assignee).map(t => t.assignee!.id)));
+
+  const filteredTickets = tickets.filter((ticket) => {
+    // Search filter
+    const matchesSearch = 
+      ticket.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ticket.identifier.toLowerCase().includes(searchQuery.toLowerCase());
+
+    // State filter
+    const matchesState = filters.states.size === 0 || filters.states.has(ticket.state.name);
+
+    // Priority filter
+    const matchesPriority = filters.priorities.size === 0 || 
+      (ticket.priority !== null && filters.priorities.has(ticket.priority)) ||
+      (ticket.priority === null && filters.priorities.has(0));
+
+    // Team filter
+    const matchesTeam = filters.teams.size === 0 || filters.teams.has(ticket.team.key);
+
+    // Assignee filter
+    const matchesAssignee = filters.assignees.size === 0 || 
+      (ticket.assignee && filters.assignees.has(ticket.assignee.id)) ||
+      (!ticket.assignee && filters.assignees.has('unassigned'));
+
+    return matchesSearch && matchesState && matchesPriority && matchesTeam && matchesAssignee;
+  });
+
+  const toggleFilter = (type: 'states' | 'priorities' | 'teams' | 'assignees', value: string | number) => {
+    setFilters(prev => {
+      const newFilters = { ...prev };
+      if (type === 'priorities') {
+        const filterSet = new Set(prev.priorities);
+        const numValue = value as number;
+        if (filterSet.has(numValue)) {
+          filterSet.delete(numValue);
+        } else {
+          filterSet.add(numValue);
+        }
+        return { ...newFilters, priorities: filterSet };
+      } else {
+        const filterSet = new Set(prev[type as 'states' | 'teams' | 'assignees']);
+        const strValue = value as string;
+        if (filterSet.has(strValue)) {
+          filterSet.delete(strValue);
+        } else {
+          filterSet.add(strValue);
+        }
+        return { ...newFilters, [type]: filterSet };
+      }
+    });
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      states: new Set(),
+      priorities: new Set(),
+      teams: new Set(),
+      assignees: new Set(),
+    });
+  };
+
+  const hasActiveFilters = filters.states.size > 0 || filters.priorities.size > 0 || 
+    filters.teams.size > 0 || filters.assignees.size > 0;
 
   const handleTicketSelect = (ticket: LinearIssue) => {
     setSelectedTicket(ticket);
@@ -240,6 +331,16 @@ export function TicketSelectionDialog({
     }
   };
 
+  // Load labels when team changes
+  useEffect(() => {
+    if (newTicketTeam && isCreateDialogOpen) {
+      const team = teams.find(t => t.key === newTicketTeam);
+      if (team) {
+        fetchLinearLabels(team.id).then(setLabels).catch(console.error);
+      }
+    }
+  }, [newTicketTeam, isCreateDialogOpen, teams]);
+
   const handleCreateNewTicket = async () => {
     if (!newTicketTitle.trim()) return;
 
@@ -250,6 +351,11 @@ export function TicketSelectionDialog({
         title: newTicketTitle,
         description: newTicketDescription || undefined,
         priority: newTicketPriority || undefined,
+        teamKey: newTicketTeam || undefined,
+        assigneeId: newTicketAssignee || undefined,
+        labelIds: newTicketLabels.size > 0 ? Array.from(newTicketLabels) : undefined,
+        dueDate: newTicketDueDate || undefined,
+        estimate: newTicketEstimate > 0 ? newTicketEstimate : undefined,
       });
 
       // Show success notification
@@ -271,6 +377,10 @@ export function TicketSelectionDialog({
       setNewTicketTitle('');
       setNewTicketDescription('');
       setNewTicketPriority(0);
+      setNewTicketAssignee('');
+      setNewTicketLabels(new Set());
+      setNewTicketDueDate('');
+      setNewTicketEstimate(0);
       
       // Move to repository step (will sync to Supabase when user completes the flow)
       setStep('repository');
@@ -402,6 +512,134 @@ export function TicketSelectionDialog({
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10"
                 />
+              </div>
+
+              {/* Filters */}
+              <div className="mb-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-4 h-4 text-gray-500" />
+                    <span className="text-sm font-medium text-gray-700">Filters</span>
+                  </div>
+                  {hasActiveFilters && (
+                    <button
+                      onClick={clearFilters}
+                      className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                    >
+                      <X className="w-3 h-3" />
+                      Clear all
+                    </button>
+                  )}
+                </div>
+
+                {/* State Filters */}
+                <div className="flex flex-wrap gap-2">
+                  {uniqueStates.slice(0, 8).map((state) => {
+                    const isActive = filters.states.has(state);
+                    const StateIcon = getStateIcon({ name: state, type: '' });
+                    return (
+                      <button
+                        key={state}
+                        onClick={() => toggleFilter('states', state)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 ${
+                          isActive
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        <StateIcon className="w-3 h-3" />
+                        {state}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Priority Filters */}
+                <div className="flex flex-wrap gap-2">
+                  {[0, 1, 2, 3, 4].map((priority) => {
+                    const isActive = filters.priorities.has(priority);
+                    const label = getPriorityLabel(priority);
+                    const color = getPriorityColor(priority);
+                    return (
+                      <button
+                        key={priority}
+                        onClick={() => toggleFilter('priorities', priority)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 ${
+                          isActive
+                            ? `${color} text-white shadow-sm`
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-white' : color}`} />
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Team Filters */}
+                {uniqueTeams.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {uniqueTeams.slice(0, 6).map((team) => {
+                      const isActive = filters.teams.has(team);
+                      return (
+                        <button
+                          key={team}
+                          onClick={() => toggleFilter('teams', team)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                            isActive
+                              ? 'bg-purple-600 text-white shadow-sm'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          {team}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Assignee Filters */}
+                {uniqueAssignees.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => toggleFilter('assignees', 'unassigned')}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                        filters.assignees.has('unassigned')
+                          ? 'bg-gray-600 text-white shadow-sm'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      Unassigned
+                    </button>
+                    {tickets
+                      .filter(t => t.assignee && uniqueAssignees.includes(t.assignee.id))
+                      .slice(0, 5)
+                      .map((ticket) => {
+                        const assignee = ticket.assignee!;
+                        const isActive = filters.assignees.has(assignee.id);
+                        return (
+                          <button
+                            key={assignee.id}
+                            onClick={() => toggleFilter('assignees', assignee.id)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 ${
+                              isActive
+                                ? 'bg-indigo-600 text-white shadow-sm'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            <Avatar className="w-4 h-4">
+                              <AvatarImage src={assignee.avatarUrl} />
+                              <AvatarFallback className="text-[8px]">
+                                {assignee.displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                              </AvatarFallback>
+                            </Avatar>
+                            {assignee.displayName.split(' ')[0]}
+                          </button>
+                        );
+                      })}
+                  </div>
+                )}
               </div>
 
               {loading ? (
@@ -800,7 +1038,7 @@ export function TicketSelectionDialog({
 
         {/* Create New Ticket Dialog */}
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create New Linear Ticket</DialogTitle>
               <DialogDescription>
@@ -808,7 +1046,7 @@ export function TicketSelectionDialog({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-4">
+            <div className="space-y-6 py-4">
               <div className="space-y-2">
                 <Label htmlFor="title">Title *</Label>
                 <Input
@@ -832,21 +1070,165 @@ export function TicketSelectionDialog({
                 />
               </div>
 
+              {/* Team Selection */}
+              {teams.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Team</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {teams.map((team) => (
+                      <button
+                        key={team.id}
+                        type="button"
+                        onClick={() => setNewTicketTeam(team.key)}
+                        disabled={creating}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                          newTicketTeam === team.key
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {team.name} ({team.key})
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Priority Selection */}
               <div className="space-y-2">
-                <Label htmlFor="priority">Priority</Label>
-                <select
-                  id="priority"
-                  value={newTicketPriority}
-                  onChange={(e) => setNewTicketPriority(Number(e.target.value))}
-                  disabled={creating}
-                  className="flex h-9 w-full rounded-md border border-input bg-input-background px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <option value={0}>None</option>
-                  <option value={1}>Urgent</option>
-                  <option value={2}>High</option>
-                  <option value={3}>Medium</option>
-                  <option value={4}>Low</option>
-                </select>
+                <Label>Priority</Label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: 0, label: 'None', color: 'bg-gray-500' },
+                    { value: 1, label: 'Urgent', color: 'bg-red-600' },
+                    { value: 2, label: 'High', color: 'bg-orange-500' },
+                    { value: 3, label: 'Medium', color: 'bg-yellow-500' },
+                    { value: 4, label: 'Low', color: 'bg-blue-500' },
+                  ].map((priority) => (
+                    <button
+                      key={priority.value}
+                      type="button"
+                      onClick={() => setNewTicketPriority(priority.value)}
+                      disabled={creating}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 ${
+                        newTicketPriority === priority.value
+                          ? `${priority.color} text-white shadow-sm`
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      <div className={`w-2 h-2 rounded-full ${priority.color === 'bg-gray-500' ? 'bg-gray-400' : priority.color}`} />
+                      {priority.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Assignee Selection */}
+              {users.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Assignee</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewTicketAssignee('')}
+                      disabled={creating}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                        !newTicketAssignee
+                          ? 'bg-gray-600 text-white shadow-sm'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      Unassigned
+                    </button>
+                    {users.slice(0, 8).map((user) => (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={() => setNewTicketAssignee(user.id)}
+                        disabled={creating}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 ${
+                          newTicketAssignee === user.id
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        <Avatar className="w-4 h-4">
+                          <AvatarImage src={user.avatarUrl} />
+                          <AvatarFallback className="text-[8px]">
+                            {user.displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                          </AvatarFallback>
+                        </Avatar>
+                        {user.displayName.split(' ')[0]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Labels Selection */}
+              {labels.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Labels</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {labels.slice(0, 12).map((label) => {
+                      const isSelected = newTicketLabels.has(label.id);
+                      return (
+                        <button
+                          key={label.id}
+                          type="button"
+                          onClick={() => {
+                            const newLabels = new Set(newTicketLabels);
+                            if (isSelected) {
+                              newLabels.delete(label.id);
+                            } else {
+                              newLabels.add(label.id);
+                            }
+                            setNewTicketLabels(newLabels);
+                          }}
+                          disabled={creating}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                            isSelected
+                              ? 'shadow-sm border-2'
+                              : 'bg-gray-100 hover:bg-gray-200'
+                          }`}
+                          style={{
+                            backgroundColor: isSelected ? `${label.color}20` : undefined,
+                            color: isSelected ? label.color : undefined,
+                            borderColor: isSelected ? label.color : undefined,
+                          }}
+                        >
+                          {label.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Due Date and Estimate */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="dueDate">Due Date</Label>
+                  <Input
+                    id="dueDate"
+                    type="date"
+                    value={newTicketDueDate}
+                    onChange={(e) => setNewTicketDueDate(e.target.value)}
+                    disabled={creating}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="estimate">Estimate (points)</Label>
+                  <Input
+                    id="estimate"
+                    type="number"
+                    min="0"
+                    value={newTicketEstimate || ''}
+                    onChange={(e) => setNewTicketEstimate(Number(e.target.value) || 0)}
+                    disabled={creating}
+                    placeholder="0"
+                  />
+                </div>
               </div>
             </div>
 

@@ -224,6 +224,40 @@ export function getUserInitials(name: string): string {
 }
 
 /**
+ * Get a consistent, natural-looking color for a user based on their name
+ * Uses a palette of muted, natural colors instead of gradients
+ */
+export function getUserColor(name: string): { bg: string; text: string } {
+  // Natural color palette - muted, earthy tones
+  const colors = [
+    { bg: 'bg-slate-500', text: 'text-white' },      // Slate gray
+    { bg: 'bg-stone-500', text: 'text-white' },       // Stone brown
+    { bg: 'bg-neutral-600', text: 'text-white' },    // Neutral gray
+    { bg: 'bg-zinc-600', text: 'text-white' },       // Zinc gray
+    { bg: 'bg-amber-600', text: 'text-white' },      // Amber
+    { bg: 'bg-orange-600', text: 'text-white' },     // Orange
+    { bg: 'bg-emerald-600', text: 'text-white' },    // Emerald green
+    { bg: 'bg-teal-600', text: 'text-white' },       // Teal
+    { bg: 'bg-cyan-600', text: 'text-white' },       // Cyan
+    { bg: 'bg-blue-600', text: 'text-white' },       // Blue
+    { bg: 'bg-indigo-600', text: 'text-white' },     // Indigo
+    { bg: 'bg-violet-600', text: 'text-white' },     // Violet
+    { bg: 'bg-purple-600', text: 'text-white' },      // Purple
+    { bg: 'bg-fuchsia-600', text: 'text-white' },     // Fuchsia
+    { bg: 'bg-pink-600', text: 'text-white' },       // Pink
+    { bg: 'bg-rose-600', text: 'text-white' },       // Rose
+  ];
+
+  // Simple hash function to get consistent color for each name
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % colors.length;
+  return colors[index];
+}
+
+/**
  * Format timestamp for display
  */
 export function formatTimestamp(timestamp: string): string {

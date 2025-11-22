@@ -1,4 +1,5 @@
 import { GitPullRequest, CheckCircle, GitCommit, MessageSquare } from 'lucide-react';
+import { getUserColor, getUserInitials } from '@/lib/database';
 
 export function PRView() {
   return (
@@ -24,9 +25,15 @@ export function PRView() {
 
         <div className="flex items-center gap-4 text-sm text-gray-400 mb-4">
           <div className="flex items-center gap-1.5">
-            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
-              <span className="text-white text-xs">DA</span>
-            </div>
+            {(() => {
+              const agentName = 'dev-agent';
+              const agentColor = getUserColor(agentName);
+              return (
+                <div className={`w-6 h-6 rounded-full ${agentColor.bg} ${agentColor.text} flex items-center justify-center border border-gray-400`}>
+                  <span className="text-xs font-medium">{getUserInitials(agentName)}</span>
+                </div>
+              );
+            })()}
             <span>dev-agent</span>
           </div>
           <span>wants to merge into</span>
@@ -96,9 +103,15 @@ export function PRView() {
           </div>
 
           <div className="flex gap-3">
-            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center flex-shrink-0">
-              <span className="text-white text-xs">JD</span>
-            </div>
+            {(() => {
+              const commenterName = 'Jane Doe';
+              const commenterColor = getUserColor(commenterName);
+              return (
+                <div className={`w-6 h-6 rounded-full ${commenterColor.bg} ${commenterColor.text} flex items-center justify-center flex-shrink-0 border border-gray-400`}>
+                  <span className="text-xs font-medium">{getUserInitials(commenterName)}</span>
+                </div>
+              );
+            })()}
             <div className="flex-1">
               <div className="text-sm text-white mb-1">
                 Jane Doe commented

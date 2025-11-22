@@ -1,3 +1,5 @@
+import { getUserColor } from '@/lib/database';
+
 interface HumanMessageProps {
   content: string;
   author: string;
@@ -7,12 +9,14 @@ interface HumanMessageProps {
 }
 
 export function HumanMessage({ content, author, avatar, timestamp, showAvatar = true }: HumanMessageProps) {
+  const userColor = getUserColor(author);
+  
   return (
     <div className={`px-4 hover:bg-gray-50 group transition-colors ${showAvatar ? 'py-3 border-t border-gray-100' : 'py-1'}`}>
       <div className="flex gap-3">
         {showAvatar ? (
-          <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-blue-600 to-purple-600 border-2 border-white shadow-sm">
-            <span className="text-white text-sm">{avatar}</span>
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${userColor.bg} ${userColor.text} border border-gray-200 shadow-sm`}>
+            <span className="text-sm font-medium">{avatar}</span>
           </div>
         ) : (
           <div className="w-10 flex-shrink-0" />
