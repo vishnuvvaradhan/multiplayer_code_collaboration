@@ -12,21 +12,42 @@ npm install
 
 ### Environment Setup
 
-Create a `.env.local` file in the `frontend` directory with your Linear API key:
+Create a `.env.local` file in the `frontend` directory:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Then edit `.env.local` and add your Linear API key:
+Then edit `.env.local` and add your credentials:
 
+#### 1. Linear API Key
 ```
 NEXT_PUBLIC_LINEAR_API_KEY=your_linear_api_key_here
 ```
-
 Get your API key from: https://linear.app/settings/api
 
-**Note**: The `.env.local` file is gitignored and will not be committed to the repository.
+#### 2. GitHub OAuth Credentials
+Each developer needs to create their own GitHub OAuth App:
+
+1. Go to: https://github.com/settings/developers
+2. Click "New OAuth App"
+3. Fill in:
+   - **Application name**: Relay (or your app name)
+   - **Homepage URL**: `http://localhost:3000`
+   - **Authorization callback URL**: `http://localhost:3000/api/auth/github/callback`
+4. Click "Register application"
+5. Copy the **Client ID** and generate a **Client Secret**
+6. Add to `.env.local`:
+   ```
+   NEXT_PUBLIC_GITHUB_CLIENT_ID=your_client_id_here
+   GITHUB_CLIENT_SECRET=your_client_secret_here
+   ```
+
+**Important Notes:**
+- The `.env.local` file is gitignored and will not be committed
+- Each developer must create their own GitHub OAuth App (Client IDs are per-app)
+- The Client ID is safe to expose (it's public in OAuth flows)
+- The Client Secret must be kept private and never committed
 
 Then, run the development server:
 

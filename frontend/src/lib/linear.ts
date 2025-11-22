@@ -19,6 +19,8 @@ export interface LinearIssue {
   title: string;
   description?: string;
   priority: number | null;
+  estimate?: number | null;
+  dueDate?: string | null;
   state: {
     id: string;
     name: string;
@@ -110,6 +112,8 @@ export async function fetchLinearIssues(limit: number = 50): Promise<LinearIssue
           title
           description
           priority
+          estimate
+          dueDate
           state {
             id
             name
