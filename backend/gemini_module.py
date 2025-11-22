@@ -122,13 +122,13 @@ def gemini_make_plan(ticket_id: str) -> Generator[str, None, None]:
     yield from run_gemini_cmd(ticket_id, cmd)
 
 
-
 def gemini_dev(ticket_id: str) -> Generator[str, None, None]:
     """
     Handle @dev:
-    Applies the implementation plan, modifies repository files,
-    stages changes, commits them, and prepares repo for PR creation.
+    Applies the plan, commits code, pushes branch, and creates/updates a GitHub PR
+    using the local GitHub CLI (gh). Assumes user is already authenticated.
     """
+
     workspace = os.path.join(TICKETS_ROOT, ticket_id)
     if not os.path.exists(workspace):
         yield f"Error: workspace for ticket {ticket_id} not found."
@@ -139,12 +139,61 @@ def gemini_dev(ticket_id: str) -> Generator[str, None, None]:
         yield "Error: plan.md not found. Run @plan first."
         return
 
-    # Apply code changes from the plan
+
     cmd = ["code", "apply", "plan.md"]
+
     yield from run_gemini_cmd(ticket_id, cmd)
 
-    # Stage and commit changes
+
     subprocess.run(["git", "add", "."], cwd=workspace)
     subprocess.run(["git", "commit", "-m", "AI-generated implementation"], cwd=workspace)
 
-    yield "Changes committed. Ready for PR creation.\n"
+    yield "Changes committed. Preparing PR...\n"
+
+    branch_name = f"ticket_{ticket_id}"
+
+ 
+    subprocess.run(
+        ["git", "push", "--set-upstream", "origin", branch_name],
+        cwd=workspace
+    )
+
+    yield f"Branch '{branch_name}' pushed to remote.\n"
+
+    # check pr existence
+    pr_view = subprocess.run(
+        ["gh", "pr", "view", branch_name, "--json", "url"],
+        cwd=workspace,
+        capture_output=True,
+        text=True
+    )
+
+    if pr_view.returncode == 0:
+        # PR already exists
+        import json
+        pr_url = json.loads(pr_view.stdout)["url"]
+        yield f"Existing PR detected: {pr_url}\n"
+        yield "PR updated with new commits.\n"
+        return
+
+    #if not we just create new pr here...
+    pr_create = subprocess.run(
+        [
+            "gh", "pr", "create",
+            "--head", branch_name,
+            "--base", "main",
+            "--title", f"AI Implementation for Ticket {ticket_id}",
+            "--body", "This PR was generated automatically via @dev."
+        ],
+        cwd=workspace,
+        capture_output=True,
+        text=True
+    )
+
+    if pr_create.returncode != 0:
+        yield "Error creating PR:\n"
+        yield pr_create.stderr
+        return
+
+    yield pr_create.stdout
+    yield "Pull request created successfully.\n"
