@@ -1,4 +1,4 @@
-import { Hash, ChevronDown, Users, Pin, Search, Info, Smile, Paperclip, AtSign, Send } from 'lucide-react';
+import { Hash, ChevronDown, Users, Pin, Search, Info, Smile, Paperclip, AtSign, Send, Github } from 'lucide-react';
 import { HumanMessage } from './messages/HumanMessage';
 import { AgentMessage } from './messages/AgentMessage';
 import { SystemMessage } from './messages/SystemMessage';
@@ -6,12 +6,14 @@ import { ArchitectPlanCard } from './messages/ArchitectPlanCard';
 import { DiffGeneratedCard } from './messages/DiffGeneratedCard';
 import { EmptyState } from './EmptyState';
 import { LoadingState } from './LoadingState';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface ChatPanelProps {
   ticketId: string;
   onToggleRightPanel: () => void;
   isRightPanelOpen: boolean;
+  repositoryUrl?: string;
+  repositoryName?: string;
 }
 
 type Message = 
@@ -21,10 +23,10 @@ type Message =
   | { type: 'architect-plan'; timestamp: string }
   | { type: 'diff-generated'; timestamp: string };
 
-const messages: Message[] = [
+const defaultMessages: Message[] = [
   {
     type: 'system',
-    content: 'Ticket REL-123 created',
+    content: 'Ticket created',
     timestamp: '10:23 AM',
   },
   {
@@ -77,7 +79,33 @@ const messages: Message[] = [
   },
 ];
 
-export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen }: ChatPanelProps) {
+export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repositoryUrl, repositoryName }: ChatPanelProps) {
+  // Log repository info when it changes
+  useEffect(() => {
+    if (repositoryUrl) {
+      console.log('💬 ChatPanel received repository context:', {
+        url: repositoryUrl,
+        name: repositoryName,
+        ticketId,
+      });
+    } else {
+      console.log('💬 ChatPanel: No repository context available');
+    }
+  }, [repositoryUrl, repositoryName, ticketId]);
+
+  // Initialize messages with repository context if available
+  const initialMessages: Message[] = repositoryUrl 
+    ? [
+        {
+          type: 'system',
+          content: `Repository context: ${repositoryName || repositoryUrl}\nThis chat is connected to the GitHub repository for agent context. The agent can access code and context from: ${repositoryUrl}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        },
+        ...defaultMessages,
+      ]
+    : defaultMessages;
+
+  const [messages] = useState<Message[]>(initialMessages);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -96,6 +124,24 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen }: Ch
           <Hash className="w-5 h-5 text-gray-600" />
           <h1 className="text-gray-900">add-payment-method-validation</h1>
           <ChevronDown className="w-4 h-4 text-gray-500" />
+          {repositoryUrl && (
+            <a
+              href={repositoryUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-2 flex items-center gap-1.5 px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors border border-gray-300"
+              title={`Repository: ${repositoryName || repositoryUrl}\nURL: ${repositoryUrl}`}
+              onClick={(e) => {
+                console.log('🔗 Repository link clicked:', repositoryUrl);
+                // Don't prevent default - let it open the link
+              }}
+            >
+              <Github className="w-3.5 h-3.5" />
+              <span className="truncate max-w-[150px]" title={repositoryUrl}>
+                {repositoryName || 'Repository'}
+              </span>
+            </a>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <button className="p-2 hover:bg-gray-100 rounded-md transition-colors">

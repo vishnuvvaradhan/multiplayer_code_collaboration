@@ -31,23 +31,48 @@ const statusConfig = {
 interface LeftSidebarProps {
   selectedTicket: string;
   onSelectTicket: (id: string) => void;
+  onRepositorySelected?: (repository: { fullName: string; url: string; name: string }) => void;
 }
 
-export function LeftSidebar({ selectedTicket, onSelectTicket }: LeftSidebarProps) {
+export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelected }: LeftSidebarProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  const handleTicketSelected = (ticket: LinearIssue, selectedUsers: LinearUser[]) => {
-    console.log('Ticket selected:', ticket);
-    console.log('Users selected:', selectedUsers);
+  const handleTicketSelected = (
+    ticket: LinearIssue, 
+    selectedUsers: LinearUser[], 
+    repository: { fullName: string; url: string; name: string }
+  ) => {
+    console.log('📋 Ticket selected:', ticket.identifier, ticket.title);
+    console.log('👥 Users selected:', selectedUsers.map(u => u.displayName));
+    console.log('🔗 Repository selected:', {
+      fullName: repository.fullName,
+      url: repository.url,
+      name: repository.name,
+    });
     
-    // TODO: Create group/session with selected ticket and users
-    // For now, just switch to the selected ticket
+    // Pass repository info to parent component so it can be used in chat context
+    if (onRepositorySelected) {
+      console.log('✅ Passing repository to parent:', repository.url);
+      onRepositorySelected(repository);
+    } else {
+      console.warn('⚠️ onRepositorySelected callback not provided');
+    }
+    
+    // Switch to the selected ticket
     onSelectTicket(ticket.identifier);
     
+    // TODO: Create group/session with selected ticket, users, and repository
+    // The repository URL is now available in the chat context via repositoryInfo state
+    // Repository info:
+    //   - repository.url: Full GitHub URL (e.g., https://github.com/user/repo)
+    //   - repository.fullName: Full name (e.g., user/repo)
+    //   - repository.name: Repo name (e.g., repo)
+    
     // You can add logic here to:
-    // - Create a collaboration group/session
+    // - Create a collaboration group/session with repository context
     // - Notify selected users
     // - Set up the workspace for the ticket
+    // - The repository URL is automatically passed to ChatPanel for agent context
   };
   return (
     <div className="w-64 border-r border-purple-900/50 flex flex-col h-full shadow-lg" style={{ backgroundColor: '#350D36' }}>
