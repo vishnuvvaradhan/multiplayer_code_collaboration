@@ -1,25 +1,11 @@
 "use client";
 
-import { useState } from 'react';
-import { Plus, Hash, ChevronDown, Circle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, Hash, ChevronDown, Circle, Loader2 } from 'lucide-react';
 import { TicketSelectionDialog } from './TicketSelectionDialog';
 import { LinearIssue, LinearUser } from '../lib/linear';
-
-interface Ticket {
-  id: string;
-  title: string;
-  status: 'in-progress' | 'review' | 'done' | 'blocked';
-  unread?: number;
-}
-
-const tickets: Ticket[] = [
-  { id: 'REL-123', title: 'Add payment method validation', status: 'in-progress', unread: 3 },
-  { id: 'REL-122', title: 'Fix checkout button styling', status: 'review' },
-  { id: 'REL-121', title: 'Implement address autocomplete', status: 'done' },
-  { id: 'REL-120', title: 'Add promo code field', status: 'in-progress', unread: 1 },
-  { id: 'REL-119', title: 'Update cart calculations', status: 'blocked' },
-  { id: 'REL-118', title: 'Redesign order summary', status: 'done' },
-];
+import { getAllTickets, getMessagesByTicketId } from '../lib/database';
+import { Ticket } from '../lib/supabase';
 
 const statusConfig = {
   'in-progress': { color: 'bg-blue-600', label: 'In Progress' },
@@ -36,6 +22,39 @@ interface LeftSidebarProps {
 
 export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelected }: LeftSidebarProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+
+  // Fetch tickets from Supabase
+  useEffect(() => {
+    async function fetchTickets() {
+      try {
+        setLoading(true);
+        const dbTickets = await getAllTickets();
+        setTickets(dbTickets);
+
+        // Fetch unread message counts for each ticket
+        // For now, we'll just show if there are any messages
+        const counts: Record<string, number> = {};
+        for (const ticket of dbTickets) {
+          const messages = await getMessagesByTicketId(ticket.id);
+          // You can implement more sophisticated unread logic here
+          // For now, just count total messages as a placeholder
+          if (messages.length > 0) {
+            counts[ticket.ticket_identifier] = messages.length;
+          }
+        }
+        setUnreadCounts(counts);
+      } catch (error) {
+        console.error('Error fetching tickets:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchTickets();
+  }, []);
 
   const handleTicketSelected = (
     ticket: LinearIssue, 
@@ -61,18 +80,8 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
     // Switch to the selected ticket
     onSelectTicket(ticket.identifier);
     
-    // TODO: Create group/session with selected ticket, users, and repository
-    // The repository URL is now available in the chat context via repositoryInfo state
-    // Repository info:
-    //   - repository.url: Full GitHub URL (e.g., https://github.com/user/repo)
-    //   - repository.fullName: Full name (e.g., user/repo)
-    //   - repository.name: Repo name (e.g., repo)
-    
-    // You can add logic here to:
-    // - Create a collaboration group/session with repository context
-    // - Notify selected users
-    // - Set up the workspace for the ticket
-    // - The repository URL is automatically passed to ChatPanel for agent context
+    // Refresh tickets to show the newly created one
+    getAllTickets().then(setTickets);
   };
   return (
     <div className="w-64 border-r border-purple-900/50 flex flex-col h-full shadow-lg" style={{ backgroundColor: '#350D36' }}>
@@ -99,56 +108,69 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
             <ChevronDown className="w-3.5 h-3.5" style={{ color: '#e9d5ff' }} />
           </button>
           
-          <div className="space-y-1">
-            {tickets.map((ticket) => {
-              const isSelected = ticket.id === selectedTicket;
-              const config = statusConfig[ticket.status];
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin" style={{ color: '#f3e8ff' }} />
+            </div>
+          ) : tickets.length === 0 ? (
+            <div className="text-center py-8 px-3">
+              <p className="text-sm" style={{ color: '#c084fc' }}>No tickets yet</p>
+              <p className="text-xs mt-1" style={{ color: '#9333ea' }}>Click Create to add one</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {tickets.map((ticket) => {
+                const isSelected = ticket.ticket_identifier === selectedTicket;
+                const messageCount = unreadCounts[ticket.ticket_identifier];
 
-              return (
-                <button
-                  key={ticket.id}
-                  onClick={() => onSelectTicket(ticket.id)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all duration-200 ease-in-out group relative ${
-                    isSelected
-                      ? 'shadow-md'
-                      : 'hover:bg-purple-700/50 hover:shadow-sm'
-                  }`}
-                  style={{
-                    transform: isSelected ? 'scale(1.02)' : 'scale(1)',
-                    color: isSelected ? '#350D36' : '#f3e8ff',
-                    backgroundColor: isSelected ? '#ffffff' : 'transparent',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.transform = 'scale(1.01)';
-                      const hashIcon = e.currentTarget.querySelector('svg');
-                      if (hashIcon) hashIcon.style.color = '#f3e8ff';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.transform = 'scale(1)';
-                      const hashIcon = e.currentTarget.querySelector('svg');
-                      if (hashIcon) hashIcon.style.color = '#c084fc';
-                    }
-                  }}
-                >
-                  <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                    <Hash className="w-4 h-4 shrink-0 transition-colors duration-200" style={{ color: isSelected ? '#350D36' : '#c084fc' }} />
-                    <span className="truncate font-medium" style={{ color: isSelected ? '#350D36' : '#f3e8ff' }}>{ticket.title.toLowerCase().replace(/\s+/g, '-')}</span>
-                  </div>
-                  {ticket.unread && !isSelected && (
-                    <span className="px-2 py-0.5 bg-white text-[#350D36] rounded-full text-xs font-bold min-w-[20px] text-center shadow-sm">
-                      {ticket.unread}
-                    </span>
-                  )}
-                  {isSelected && (
-                    <Circle className={`w-2.5 h-2.5 shrink-0 ${config.color} fill-current animate-pulse`} />
-                  )}
-                </button>
-              );
-            })}
-          </div>
+                return (
+                  <button
+                    key={ticket.id}
+                    onClick={() => onSelectTicket(ticket.ticket_identifier)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all duration-200 ease-in-out group relative ${
+                      isSelected
+                        ? 'shadow-md'
+                        : 'hover:bg-purple-700/50 hover:shadow-sm'
+                    }`}
+                    style={{
+                      transform: isSelected ? 'scale(1.02)' : 'scale(1)',
+                      color: isSelected ? '#350D36' : '#f3e8ff',
+                      backgroundColor: isSelected ? '#ffffff' : 'transparent',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.transform = 'scale(1.01)';
+                        const hashIcon = e.currentTarget.querySelector('svg');
+                        if (hashIcon) hashIcon.style.color = '#f3e8ff';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.transform = 'scale(1)';
+                        const hashIcon = e.currentTarget.querySelector('svg');
+                        if (hashIcon) hashIcon.style.color = '#c084fc';
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                      <Hash className="w-4 h-4 shrink-0 transition-colors duration-200" style={{ color: isSelected ? '#350D36' : '#c084fc' }} />
+                      <span className="truncate font-medium" style={{ color: isSelected ? '#350D36' : '#f3e8ff' }}>
+                        {ticket.ticket_name.toLowerCase().replace(/\s+/g, '-')}
+                      </span>
+                    </div>
+                    {messageCount && !isSelected && (
+                      <span className="px-2 py-0.5 bg-white text-[#350D36] rounded-full text-xs font-bold min-w-[20px] text-center shadow-sm">
+                        {messageCount}
+                      </span>
+                    )}
+                    {isSelected && (
+                      <Circle className="w-2.5 h-2.5 shrink-0 bg-blue-600 fill-current animate-pulse" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Create button */}
