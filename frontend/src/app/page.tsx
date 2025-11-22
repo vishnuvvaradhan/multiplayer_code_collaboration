@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { TopBar } from '../components/TopBar';
 import { LeftSidebar } from '../components/LeftSidebar';
 import { ChatPanel } from '../components/ChatPanel';
 import { RightPanel } from '../components/RightPanel';
@@ -30,8 +29,6 @@ export default function Home() {
 
   return (
     <div className="h-screen bg-white flex flex-col overflow-hidden">
-      <TopBar />
-
       <div className="flex-1 flex overflow-hidden">
         <LeftSidebar
           selectedTicket={selectedTicket}
@@ -45,6 +42,7 @@ export default function Home() {
           isRightPanelOpen={isRightPanelOpen}
           repositoryUrl={repositoryInfo?.url}
           repositoryName={repositoryInfo?.fullName}
+          onSelectTicket={setSelectedTicket}
         />
 
         {isRightPanelOpen && (

@@ -1,4 +1,5 @@
 import { Hash, ChevronDown, Users, Pin, Search, Info, Smile, Paperclip, AtSign, Send, Github } from 'lucide-react';
+import { getAllTickets } from '@/lib/database';
 import { HumanMessage } from './messages/HumanMessage';
 import { AgentMessage } from './messages/AgentMessage';
 import { SystemMessage } from './messages/SystemMessage';
@@ -8,7 +9,7 @@ import { EmptyState } from './EmptyState';
 import { LoadingState } from './LoadingState';
 import { useState, useEffect, useRef } from 'react';
 import { useMessages } from '@/hooks/useMessages';
-import { createMessage, formatTimestamp, getUserInitials } from '@/lib/database';
+import { createMessage, formatTimestamp, getUserInitials, getUserColor } from '@/lib/database';
 import { getCurrentUserName } from '@/lib/supabase';
 import { getTicketByIdentifier } from '@/lib/database';
 import { toast } from 'sonner';
@@ -20,15 +21,18 @@ interface ChatPanelProps {
   isRightPanelOpen: boolean;
   repositoryUrl?: string;
   repositoryName?: string;
+  onSelectTicket?: (ticketId: string) => void;
 }
 
-export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repositoryUrl, repositoryName }: ChatPanelProps) {
+export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repositoryUrl, repositoryName, onSelectTicket }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
   const [ticketDbId, setTicketDbId] = useState<string | null>(null);
   const [ticketName, setTicketName] = useState<string>('');
   const [participants, setParticipants] = useState<string[]>([]);
   const [isNearBottom, setIsNearBottom] = useState(true);
+  const [isTicketDropdownOpen, setIsTicketDropdownOpen] = useState(false);
+  const [availableTickets, setAvailableTickets] = useState<Array<{ id: string; identifier: string; name: string }>>([]);
   const [shouldJustifyEnd, setShouldJustifyEnd] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -36,6 +40,23 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
   const isUserScrollingRef = useRef(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentUser = getCurrentUserName();
+
+  // Fetch all tickets for dropdown
+  useEffect(() => {
+    async function fetchAllTickets() {
+      try {
+        const allTickets = await getAllTickets();
+        setAvailableTickets(allTickets.map(t => ({
+          id: t.id,
+          identifier: t.ticket_identifier,
+          name: t.ticket_name,
+        })));
+      } catch (error) {
+        console.error('Error fetching tickets:', error);
+      }
+    }
+    fetchAllTickets();
+  }, []);
 
   // Fetch ticket from database to get its ID and participants
   useEffect(() => {
@@ -194,6 +215,21 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
     }
   }, [ticketId]); // Reset when ticket changes
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (isTicketDropdownOpen && !target.closest('.ticket-dropdown-container')) {
+        setIsTicketDropdownOpen(false);
+      }
+    };
+
+    if (isTicketDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isTicketDropdownOpen]);
+
   // Show error toast if there's an error
   useEffect(() => {
     if (error) {
@@ -207,7 +243,7 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
     if (!inputValue.trim() || !ticketDbId || sending) return;
 
     const messageContent = inputValue.trim();
-    setInputValue('');
+      setInputValue('');
     setSending(true);
 
     try {
@@ -240,10 +276,48 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
     <div className="flex-1 flex flex-col bg-white h-full">
       {/* Header */}
       <div className="h-14 border-b border-gray-300 flex items-center justify-between px-4 bg-white shadow-sm">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 relative ticket-dropdown-container">
           <Hash className="w-5 h-5 text-gray-600" />
           <h1 className="text-gray-900">{ticketName || ticketId}</h1>
-          <ChevronDown className="w-4 h-4 text-gray-500" />
+          <button
+            onClick={() => setIsTicketDropdownOpen(!isTicketDropdownOpen)}
+            className="p-1 hover:bg-gray-100 rounded transition-colors"
+          >
+            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isTicketDropdownOpen ? 'rotate-180' : ''}`} />
+          </button>
+          
+          {/* Ticket Dropdown */}
+          {isTicketDropdownOpen && (
+            <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-96 overflow-y-auto">
+              <div className="p-2">
+                {availableTickets.length === 0 ? (
+                  <div className="px-3 py-2 text-sm text-gray-500">No tickets available</div>
+                ) : (
+                  availableTickets.map((ticket) => (
+                    <button
+                      key={ticket.id}
+                      onClick={() => {
+                        if (onSelectTicket) {
+                          onSelectTicket(ticket.identifier);
+                        }
+                        setIsTicketDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                        ticket.identifier === ticketId
+                          ? 'bg-blue-50 text-blue-900 font-medium'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Hash className="w-3.5 h-3.5 text-gray-400" />
+                        <span className="truncate">{ticket.name || ticket.identifier}</span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
           {repositoryUrl && (
             <a
               href={repositoryUrl}
@@ -332,50 +406,50 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
                 }
 
                 if (message.message_type === 'system') {
-                  return (
-                    <SystemMessage
+              return (
+                <SystemMessage
                       key={message.id}
-                      content={message.content || ''}
+                  content={message.content || ''}
                       timestamp={formattedTimestamp}
-                    />
-                  );
-                }
+                />
+              );
+            }
 
                 if (message.message_type === 'human') {
-                  return (
-                    <HumanMessage
+              return (
+                <HumanMessage
                       key={message.id}
-                      content={message.content || ''}
+                  content={message.content || ''}
                       author={message.user_or_agent}
                       avatar={message.metadata?.avatar || getUserInitials(message.user_or_agent)}
                       timestamp={formattedTimestamp}
                       showAvatar={showAvatar}
-                    />
-                  );
-                }
+                />
+              );
+            }
 
                 if (message.message_type === 'agent') {
-                  return (
-                    <AgentMessage
+              return (
+                <AgentMessage
                       key={message.id}
-                      content={message.content || ''}
+                  content={message.content || ''}
                       agent={message.metadata?.agent || 'dev'}
                       author={message.user_or_agent}
                       timestamp={formattedTimestamp}
-                    />
-                  );
-                }
+                />
+              );
+            }
 
                 if (message.message_type === 'architect-plan') {
                   return <ArchitectPlanCard key={message.id} timestamp={formattedTimestamp} />;
-                }
+            }
 
                 if (message.message_type === 'diff-generated') {
                   return <DiffGeneratedCard key={message.id} timestamp={formattedTimestamp} />;
-                }
+            }
 
-                return null;
-              })}
+            return null;
+          })}
               <div ref={messagesEndRef} />
             </div>
           ) : null}
@@ -387,7 +461,7 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
                 {/* Ticket Information */}
                 <div className="mb-8 pb-6 border-b border-gray-200">
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center flex-shrink-0">
+                    <div className="w-10 h-10 rounded-lg bg-slate-500 flex items-center justify-center flex-shrink-0">
                       <Hash className="w-5 h-5 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -423,9 +497,14 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
                           className="flex flex-col items-center gap-2 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-all"
                         >
                           <Avatar className="w-10 h-10">
-                            <AvatarFallback className="bg-gradient-to-br from-blue-600 to-purple-600 text-white text-xs font-semibold">
-                              {getUserInitials(person)}
-                            </AvatarFallback>
+                            {(() => {
+                              const personColor = getUserColor(person);
+                              return (
+                                <AvatarFallback className={`${personColor.bg} ${personColor.text} text-xs font-medium border border-gray-200`}>
+                                  {getUserInitials(person)}
+                                </AvatarFallback>
+                              );
+                            })()}
                           </Avatar>
                           <span className="text-sm font-medium text-gray-700 text-center">{person}</span>
                         </div>
@@ -478,7 +557,7 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Write a comment..."
+            placeholder="Write a message..."
             className="w-full px-3 py-2.5 text-sm outline-none text-gray-900 placeholder-gray-500"
             style={{
               background: 'transparent',
@@ -549,24 +628,24 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
               className="p-2 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
               style={{
                 background: sending || !inputValue.trim() 
-                  ? 'rgba(34, 197, 94, 0.5)' 
-                  : 'linear-gradient(135deg, rgba(34, 197, 94, 0.8) 0%, rgba(22, 163, 74, 0.9) 100%)',
+                  ? 'rgba(217, 119, 6, 0.5)' 
+                  : 'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
                 backdropFilter: 'blur(10px) saturate(180%)',
                 WebkitBackdropFilter: 'blur(10px) saturate(180%)',
                 border: '1px solid rgba(255, 255, 255, 0.3)',
                 boxShadow: !inputValue.trim() || sending
                   ? 'none'
-                  : '0 4px 15px rgba(34, 197, 94, 0.4), 0 0 20px rgba(34, 197, 94, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)',
+                  : '0 4px 15px rgba(217, 119, 6, 0.4), 0 0 20px rgba(217, 119, 6, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)',
               }}
               onMouseEnter={(e) => {
                 if (!sending && inputValue.trim()) {
-                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(34, 197, 94, 0.6), 0 0 30px rgba(34, 197, 94, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.4)';
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(217, 119, 6, 0.6), 0 0 30px rgba(217, 119, 6, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.4)';
                   e.currentTarget.style.transform = 'scale(1.02)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!sending && inputValue.trim()) {
-                  e.currentTarget.style.boxShadow = '0 4px 15px rgba(34, 197, 94, 0.4), 0 0 20px rgba(34, 197, 94, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
+                  e.currentTarget.style.boxShadow = '0 4px 15px rgba(217, 119, 6, 0.4), 0 0 20px rgba(217, 119, 6, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
                   e.currentTarget.style.transform = 'scale(1)';
                 }
               }}

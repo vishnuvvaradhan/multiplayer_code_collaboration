@@ -178,6 +178,69 @@ export async function fetchLinearUsers(): Promise<LinearUser[]> {
   return data.users.nodes.filter((user: LinearUser) => user.active);
 }
 
+export interface LinearTeam {
+  id: string;
+  name: string;
+  key: string;
+}
+
+export async function fetchLinearTeams(): Promise<LinearTeam[]> {
+  const query = `
+    query {
+      teams {
+        nodes {
+          id
+          name
+          key
+        }
+      }
+    }
+  `;
+
+  const data = await linearQuery(query);
+  return data.teams.nodes;
+}
+
+export interface LinearLabel {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export async function fetchLinearLabels(teamId?: string): Promise<LinearLabel[]> {
+  const query = teamId ? `
+    query($teamId: ID!) {
+      team(id: $teamId) {
+        labels {
+          nodes {
+            id
+            name
+            color
+          }
+        }
+      }
+    }
+  ` : `
+    query {
+      issueLabels {
+        nodes {
+          id
+          name
+          color
+        }
+      }
+    }
+  `;
+
+  const variables = teamId ? { teamId } : undefined;
+  const data = await linearQuery(query, variables);
+  
+  if (teamId) {
+    return data.team?.labels?.nodes || [];
+  }
+  return data.issueLabels?.nodes || [];
+}
+
 export interface CreateIssueInput {
   title: string;
   description?: string;

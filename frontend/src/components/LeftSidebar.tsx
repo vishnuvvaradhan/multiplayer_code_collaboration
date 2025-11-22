@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Hash, ChevronDown, Loader2, MoreVertical, Bell } from 'lucide-react';
 import { TicketSelectionDialog } from './TicketSelectionDialog';
 import { LinearIssue, LinearUser } from '../lib/linear';
-import { getAllTickets, getMessagesByTicketId } from '../lib/database';
+import { getAllTickets, getMessagesByTicketId, getUserColor, getUserInitials } from '../lib/database';
 import { Ticket } from '../lib/supabase';
 
 const statusConfig = {
@@ -25,6 +25,7 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [isTicketsCollapsed, setIsTicketsCollapsed] = useState(false);
 
   // Fetch tickets from Supabase
   useEffect(() => {
@@ -86,29 +87,30 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
   return (
     <div className="w-64 border-r border-amber-800/20 flex flex-col h-full shadow-lg" style={{ backgroundColor: '#F5F1EB' }}>
       {/* Header */}
-      <div className="p-3 border-b border-amber-800/20" style={{ backgroundColor: '#F5F1EB' }}>
-        <button className="w-full flex items-center justify-between px-3 py-2 hover:bg-amber-900/10 rounded-md transition-all duration-200 border border-amber-800/20 hover:border-amber-800/30 hover:shadow-sm">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-md bg-white flex items-center justify-center shadow-sm">
-              <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                <path d="M4 10L10 4L16 10M4 10L10 16L16 10" stroke="#8B6F47" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-            <span className="text-sm font-bold tracking-wide" style={{ color: '#5D4037' }}>CodeRoom</span>
-          </div>
-          <ChevronDown className="w-4 h-4" style={{ color: '#8B6F47' }} />
-        </button>
+      <div className="p-4 border-b border-amber-800/20" style={{ backgroundColor: '#F5F1EB' }}>
+        <div className="flex items-center justify-center h-16">
+          <span className="text-3xl font-bold tracking-tight" style={{ color: '#5D4037' }}>CodeRoom</span>
+        </div>
       </div>
 
       {/* Tickets Section */}
       <div className="flex-1 overflow-y-auto p-3">
         <div className="mb-4">
-          <button className="w-full flex items-center justify-between px-2.5 py-2 text-xs hover:bg-amber-900/10 rounded-md transition-all duration-200 mb-2 hover:shadow-sm" style={{ color: '#5D4037' }}>
+          <button 
+            onClick={() => setIsTicketsCollapsed(!isTicketsCollapsed)}
+            className="w-full flex items-center justify-between px-2.5 py-2 text-xs hover:bg-amber-900/10 rounded-md transition-all duration-200 mb-2 hover:shadow-sm" 
+            style={{ color: '#5D4037' }}
+          >
             <span className="font-bold uppercase tracking-wider" style={{ color: '#5D4037' }}>Tickets</span>
-            <ChevronDown className="w-3.5 h-3.5" style={{ color: '#8B6F47' }} />
+            <ChevronDown 
+              className={`w-3.5 h-3.5 transition-transform duration-200 ${isTicketsCollapsed ? '' : 'rotate-180'}`} 
+              style={{ color: '#8B6F47' }} 
+            />
           </button>
           
-          {loading ? (
+          {!isTicketsCollapsed && (
+            <>
+              {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-5 h-5 animate-spin" style={{ color: '#8B6F47' }} />
             </div>
@@ -183,12 +185,14 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
               })}
             </div>
           )}
+            </>
+          )}
         </div>
 
         {/* Create button */}
         <button
           onClick={() => setIsDialogOpen(true)}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-all duration-300 font-medium text-white relative overflow-hidden"
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-all duration-300 font-medium text-white relative overflow-hidden shimmer-effect"
           style={{ 
             transform: 'scale(1)',
             backgroundColor: '#D97706',
@@ -208,8 +212,8 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
             e.currentTarget.style.boxShadow = '0 0 0 rgba(217, 119, 6, 0)';
           }}
         >
-          <Plus className="w-4 h-4 shrink-0" style={{ position: 'absolute', left: '12px' }} />
-          <span className="text-sm font-semibold">Create</span>
+          <Plus className="w-4 h-4 shrink-0 relative z-10" style={{ position: 'absolute', left: '12px' }} />
+          <span className="text-sm font-semibold relative z-10">Create</span>
         </button>
       </div>
 
@@ -217,9 +221,15 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
       <div className="p-2 border-t border-amber-800/20" style={{ backgroundColor: '#F5F1EB' }}>
         <div className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-amber-900/10 transition-colors cursor-pointer group">
           <div className="relative">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center border-2 border-white shadow-sm">
-              <span className="text-white text-xs font-semibold">JD</span>
-            </div>
+            {(() => {
+              const profileName = 'Jane Doe';
+              const profileColor = getUserColor(profileName);
+              return (
+                <div className={`w-8 h-8 rounded-full ${profileColor.bg} ${profileColor.text} flex items-center justify-center border border-gray-300 shadow-sm`}>
+                  <span className="text-xs font-medium">{getUserInitials(profileName)}</span>
+                </div>
+              );
+            })()}
             <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white"></div>
           </div>
           <div className="flex-1 min-w-0">
