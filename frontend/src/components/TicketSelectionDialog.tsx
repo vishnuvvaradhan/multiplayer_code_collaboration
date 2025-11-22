@@ -14,6 +14,7 @@ import { Input } from './ui/input';
 import { Checkbox } from './ui/checkbox';
 import { LinearIssue, LinearUser, fetchLinearIssues, fetchLinearUsers, createLinearIssue } from '../lib/linear';
 import { Search, Loader2, UserPlus, Plus, Github, FolderGit2, CheckCircle2, Calendar, Clock, Circle, PlayCircle, CheckCircle, XCircle, GitMerge, AlertCircle, Copy } from 'lucide-react';
+import { Search, Loader2, UserPlus, Hash, Plus, Github, FolderGit2, CheckCircle2, Calendar, Clock, Circle, PlayCircle, CheckCircle, XCircle, GitMerge, AlertCircle, Copy } from 'lucide-react';
 import { createTicket, createMessage } from '../lib/database';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Textarea } from './ui/textarea';
