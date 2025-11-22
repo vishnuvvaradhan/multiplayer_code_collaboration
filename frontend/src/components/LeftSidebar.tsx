@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Plus, Hash, ChevronDown, Circle, Loader2, MoreVertical, Bell } from 'lucide-react';
+import { Plus, Hash, ChevronDown, Loader2, MoreVertical, Bell } from 'lucide-react';
 import { TicketSelectionDialog } from './TicketSelectionDialog';
 import { LinearIssue, LinearUser } from '../lib/linear';
 import { getAllTickets, getMessagesByTicketId } from '../lib/database';
@@ -126,7 +126,15 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
                 return (
                   <button
                     key={ticket.id}
-                    onClick={() => onSelectTicket(ticket.ticket_identifier)}
+                    onClick={() => {
+                      onSelectTicket(ticket.ticket_identifier);
+                      // Clear unread count when ticket is selected
+                      setUnreadCounts(prev => {
+                        const newCounts = { ...prev };
+                        delete newCounts[ticket.ticket_identifier];
+                        return newCounts;
+                      });
+                    }}
                     className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all duration-300 ease-in-out group relative ${
                       isSelected
                         ? 'shadow-md'
@@ -169,9 +177,6 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
                       <span className="px-2 py-0.5 bg-amber-800 text-white rounded-full text-xs font-bold min-w-[20px] text-center shadow-sm">
                         {messageCount}
                       </span>
-                    )}
-                    {isSelected && (
-                      <Circle className="w-2.5 h-2.5 shrink-0 bg-blue-600 fill-current animate-pulse" />
                     )}
                   </button>
                 );
