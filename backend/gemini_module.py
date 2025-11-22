@@ -15,16 +15,10 @@ import subprocess
 from typing import Generator, List, Dict
 
 
-# ---------------------------------------------------------------------------
-# GLOBAL STATE
-# ---------------------------------------------------------------------------
-SESSION_STORE: Dict[str, str] = {}   # In-memory session store
+SESSION_STORE: Dict[str, str] = {}   # In-memory session store, maps session IDs to ticket IDs that way we can maintain correct sessions per chat 
 TICKETS_ROOT = "./tickets"           # Root directory for all ticket repos
 
 
-# ---------------------------------------------------------------------------
-# SESSION MANAGEMENT
-# ---------------------------------------------------------------------------
 def get_or_create_session(ticket_id: str) -> str:
     """
     Return an existing session for a ticket OR create a new one.
@@ -38,9 +32,7 @@ def get_or_create_session(ticket_id: str) -> str:
     return session_id
 
 
-# ---------------------------------------------------------------------------
-# SUBPROCESS STREAMING UTILITIES
-# ---------------------------------------------------------------------------
+
 def stream_subprocess(cmd: List[str], cwd: str) -> Generator[str, None, None]:
     """
     Run a subprocess and stream stdout line-by-line.
@@ -77,9 +69,7 @@ def run_gemini_cmd(ticket_id: str, args: List[str]) -> Generator[str, None, None
     yield from stream_subprocess(full_cmd, cwd=workspace)
 
 
-# ---------------------------------------------------------------------------
-# @chat — small, safe conversational interactions
-# ---------------------------------------------------------------------------
+
 def gemini_chat(ticket_id: str, prompt: str) -> Generator[str, None, None]:
     """
     Handle @chat:
@@ -94,7 +84,7 @@ def gemini_chat(ticket_id: str, prompt: str) -> Generator[str, None, None]:
     yield from run_gemini_cmd(ticket_id, cmd)
 
 
-#TODO: Need to fetch context from somewhere 
+#TODO: Need to fetch context from somewhere, eyal maybe figure out where to store chat history, needs to be ticket_id -> chat history or some mapping lmk
 def get_chat_context(ticket_id: str) -> str:
     """
     TODO: Fetch and compile chat history for the ticket.
@@ -103,9 +93,7 @@ def get_chat_context(ticket_id: str) -> str:
     return ""  
 
 
-# ---------------------------------------------------------------------------
-# @plan — generate/update plan.md (thinking step)
-# ---------------------------------------------------------------------------
+
 def gemini_make_plan(ticket_id: str) -> Generator[str, None, None]:
     """
     Handle @plan:
@@ -134,9 +122,7 @@ def gemini_make_plan(ticket_id: str) -> Generator[str, None, None]:
     yield from run_gemini_cmd(ticket_id, cmd)
 
 
-# ---------------------------------------------------------------------------
-# @dev — implement the plan, apply diffs, commit changes
-# ---------------------------------------------------------------------------
+
 def gemini_dev(ticket_id: str) -> Generator[str, None, None]:
     """
     Handle @dev:
