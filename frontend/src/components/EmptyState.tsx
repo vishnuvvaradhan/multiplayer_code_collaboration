@@ -8,12 +8,12 @@ export function EmptyState() {
           <MessageSquare className="w-8 h-8 text-gray-500" />
         </div>
         <h3 className="text-gray-900 mb-2">No messages yet</h3>
-        <p className="text-sm text-gray-600 mb-6">
-          Start a conversation with the AI agents to begin working on this ticket.
+        <p className="text-sm text-gray-600 mb-4">
+          Start the conversation! Type a message below to collaborate with your team on this ticket.
         </p>
-        <button className="px-4 py-2 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors">
-          Start Conversation
-        </button>
+        <p className="text-xs text-gray-500">
+          Messages sync across all team members in real-time.
+        </p>
       </div>
     </div>
   );
