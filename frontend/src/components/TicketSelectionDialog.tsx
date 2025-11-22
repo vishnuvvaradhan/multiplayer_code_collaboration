@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -13,16 +13,25 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Checkbox } from './ui/checkbox';
 import { LinearIssue, LinearUser, fetchLinearIssues, fetchLinearUsers, createLinearIssue } from '../lib/linear';
-import { Search, Loader2, UserPlus, Hash, Plus, ExternalLink } from 'lucide-react';
+import { Search, Loader2, UserPlus, Hash, Plus, Github, FolderGit2, CheckCircle2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { toast } from 'sonner';
+import { 
+  GitHubRepository, 
+  getGitHubOAuthUrl, 
+  fetchGitHubRepositories, 
+  getGitHubToken, 
+  setGitHubToken,
+  getGitHubUser,
+  removeGitHubToken
+} from '../lib/github';
 
 interface TicketSelectionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelectTicket: (ticket: LinearIssue, selectedUsers: LinearUser[]) => void;
+  onSelectTicket: (ticket: LinearIssue, selectedUsers: LinearUser[], repository: { fullName: string; url: string; name: string }) => void;
 }
 
 export function TicketSelectionDialog({
@@ -32,32 +41,21 @@ export function TicketSelectionDialog({
 }: TicketSelectionDialogProps) {
   const [tickets, setTickets] = useState<LinearIssue[]>([]);
   const [users, setUsers] = useState<LinearUser[]>([]);
+  const [repositories, setRepositories] = useState<GitHubRepository[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingRepos, setLoadingRepos] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTicket, setSelectedTicket] = useState<LinearIssue | null>(null);
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
-  const [step, setStep] = useState<'tickets' | 'users'>('tickets');
+  const [selectedRepository, setSelectedRepository] = useState<string>('');
+  const [step, setStep] = useState<'tickets' | 'users' | 'repository'>('tickets');
+  const [githubConnected, setGithubConnected] = useState(false);
+  const [githubUser, setGithubUser] = useState<{ login: string; avatar_url: string } | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newTicketTitle, setNewTicketTitle] = useState('');
   const [newTicketDescription, setNewTicketDescription] = useState('');
   const [newTicketPriority, setNewTicketPriority] = useState<number>(0);
-
-  useEffect(() => {
-    if (open) {
-      loadData();
-    } else {
-      // Reset state when dialog closes
-      setSearchQuery('');
-      setSelectedTicket(null);
-      setSelectedUsers(new Set());
-      setStep('tickets');
-      setIsCreateDialogOpen(false);
-      setNewTicketTitle('');
-      setNewTicketDescription('');
-      setNewTicketPriority(0);
-    }
-  }, [open]);
 
   const loadData = async () => {
     setLoading(true);
@@ -68,12 +66,77 @@ export function TicketSelectionDialog({
       ]);
       setTickets(ticketsData);
       setUsers(usersData);
-    } catch (error) {
-      console.error('Error loading data:', error);
+    } catch {
+      // Error already logged
     } finally {
       setLoading(false);
     }
   };
+
+  const loadRepositories = useCallback(async (token: string) => {
+    setLoadingRepos(true);
+    try {
+      const repos = await fetchGitHubRepositories(token);
+      setRepositories(repos);
+    } catch {
+      toast.error('Failed to load repositories');
+    } finally {
+      setLoadingRepos(false);
+    }
+  }, []);
+
+  const checkGitHubConnection = useCallback(async () => {
+    const token = getGitHubToken();
+    if (token) {
+      setGithubConnected(true);
+      try {
+        const user = await getGitHubUser(token);
+        setGithubUser({ login: user.login, avatar_url: user.avatar_url });
+        await loadRepositories(token);
+      } catch {
+        setGithubConnected(false);
+        removeGitHubToken();
+      }
+    } else {
+      setGithubConnected(false);
+      setGithubUser(null);
+    }
+  }, [loadRepositories]);
+
+  useEffect(() => {
+    if (open) {
+      loadData();
+      checkGitHubConnection();
+    } else {
+      // Reset state when dialog closes
+      setSearchQuery('');
+      setSelectedTicket(null);
+      setSelectedUsers(new Set());
+      setSelectedRepository('');
+      setStep('tickets');
+      setIsCreateDialogOpen(false);
+      setNewTicketTitle('');
+      setNewTicketDescription('');
+      setNewTicketPriority(0);
+    }
+  }, [open, checkGitHubConnection]);
+
+  // Check for GitHub token in URL (from OAuth callback)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const githubToken = urlParams.get('github_token');
+      
+      if (githubToken) {
+        setGitHubToken(githubToken);
+        // Remove token from URL
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+        checkGitHubConnection();
+        toast.success('GitHub connected successfully!');
+      }
+    }
+  }, [checkGitHubConnection]);
 
   const filteredTickets = tickets.filter((ticket) =>
     ticket.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -82,7 +145,13 @@ export function TicketSelectionDialog({
 
   const handleTicketSelect = (ticket: LinearIssue) => {
     setSelectedTicket(ticket);
-    setStep('users');
+    setStep('repository');
+  };
+
+  const handleRepositoryNext = () => {
+    if (selectedRepository) {
+      setStep('users');
+    }
   };
 
   const handleUserToggle = (userId: string) => {
@@ -95,12 +164,42 @@ export function TicketSelectionDialog({
     setSelectedUsers(newSelected);
   };
 
+  const handleConnectGitHub = () => {
+    try {
+      const oauthUrl = getGitHubOAuthUrl();
+      window.location.href = oauthUrl;
+    } catch {
+      toast.error('GitHub OAuth not configured. Please set NEXT_PUBLIC_GITHUB_CLIENT_ID');
+    }
+  };
+
   const handleCreate = () => {
-    if (selectedTicket) {
+    if (selectedTicket && selectedRepository) {
       const selectedUsersList = users.filter((user) =>
         selectedUsers.has(user.id)
       );
-      onSelectTicket(selectedTicket, selectedUsersList);
+      
+      // Find the repository object to get full details
+      const repo = repositories.find((r) => r.full_name === selectedRepository);
+      
+      const repositoryInfo = repo ? {
+        fullName: repo.full_name,
+        url: repo.html_url,
+        name: repo.name,
+      } : {
+        fullName: selectedRepository,
+        url: `https://github.com/${selectedRepository}`,
+        name: selectedRepository.split('/')[1] || selectedRepository,
+      };
+      
+      // Log for testing
+      console.log('🔍 Creating group with repository:', {
+        ticket: selectedTicket.identifier,
+        users: selectedUsersList.map(u => u.displayName),
+        repository: repositoryInfo,
+      });
+      
+      onSelectTicket(selectedTicket, selectedUsersList, repositoryInfo);
       onOpenChange(false);
     }
   };
@@ -136,8 +235,8 @@ export function TicketSelectionDialog({
       setNewTicketDescription('');
       setNewTicketPriority(0);
       
-      // Move to users step
-      setStep('users');
+      // Move to repository step
+      setStep('repository');
     } catch (error) {
       console.error('Error creating ticket:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to create ticket. Please try again.';
@@ -167,12 +266,18 @@ export function TicketSelectionDialog({
       <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>
-            {step === 'tickets' ? 'Select a Linear Ticket' : 'Add People to Group'}
+            {step === 'tickets' 
+              ? 'Select a Linear Ticket' 
+              : step === 'repository'
+              ? 'Select Repository'
+              : 'Add People to Group'}
           </DialogTitle>
           <DialogDescription>
             {step === 'tickets'
-              ? 'Choose a ticket to work on, then add team members to collaborate.'
-              : `Selected: ${selectedTicket?.identifier} - ${selectedTicket?.title}`}
+              ? 'Choose a ticket to work on, then select the repository and team members.'
+              : step === 'repository'
+              ? `Selected: ${selectedTicket?.identifier} - ${selectedTicket?.title}`
+              : `Repository: ${selectedRepository}. Select team members to collaborate.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -253,6 +358,140 @@ export function TicketSelectionDialog({
                 </div>
               )}
             </>
+          ) : step === 'repository' ? (
+            <>
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <FolderGit2 className="w-4 h-4 text-gray-500" />
+                  <span className="text-sm font-medium text-gray-700">
+                    Select the GitHub repository for this collaboration
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+                {!githubConnected ? (
+                  <div className="space-y-3">
+                    {!process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID === 'your_github_client_id_here' ? (
+                      <div className="p-4 rounded-lg border border-yellow-200 bg-yellow-50">
+                        <div className="flex items-start gap-3">
+                          <Github className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-yellow-900 mb-1">
+                              GitHub OAuth Not Configured
+                            </p>
+                            <p className="text-xs text-yellow-700 mb-2">
+                              To connect GitHub, you need to set up OAuth credentials:
+                            </p>
+                            <ol className="text-xs text-yellow-700 list-decimal list-inside space-y-1 mb-3">
+                              <li>Create a GitHub OAuth App at <a href="https://github.com/settings/developers" target="_blank" rel="noopener noreferrer" className="underline">github.com/settings/developers</a></li>
+                              <li>Set Authorization callback URL to: <code className="bg-yellow-100 px-1 rounded">http://localhost:3000/api/auth/github/callback</code></li>
+                              <li>Add <code className="bg-yellow-100 px-1 rounded">NEXT_PUBLIC_GITHUB_CLIENT_ID</code> and <code className="bg-yellow-100 px-1 rounded">GITHUB_CLIENT_SECRET</code> to your <code className="bg-yellow-100 px-1 rounded">.env.local</code> file</li>
+                              <li>Restart your development server</li>
+                            </ol>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 rounded-lg border border-blue-200 bg-blue-50">
+                        <div className="flex items-start gap-3">
+                          <Github className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-blue-900 mb-1">
+                              Connect GitHub
+                            </p>
+                            <p className="text-xs text-blue-700 mb-3">
+                              Connect your GitHub account to access your repositories and create collaboration groups.
+                            </p>
+                            <button
+                              type="button"
+                              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
+                              onClick={handleConnectGitHub}
+                            >
+                              <Github className="w-4 h-4 inline mr-2" />
+                              Connect GitHub
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {githubUser && (
+                      <div className="p-3 rounded-lg border border-green-200 bg-green-50 mb-3">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                          <Avatar className="w-5 h-5">
+                            <AvatarImage src={githubUser.avatar_url} alt={githubUser.login} />
+                            <AvatarFallback>{githubUser.login[0].toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-medium text-green-900">
+                            Connected as {githubUser.login}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {loadingRepos ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                        <span className="ml-2 text-sm text-gray-500">Loading repositories...</span>
+                      </div>
+                    ) : repositories.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <p className="text-sm">No repositories found</p>
+                        <p className="text-xs mt-1">Try refreshing or check your GitHub permissions</p>
+                      </div>
+                    ) : (
+                      repositories.map((repo) => (
+                        <label
+                          key={repo.id}
+                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition-all"
+                        >
+                          <input
+                            type="radio"
+                            name="repository"
+                            value={repo.full_name}
+                            checked={selectedRepository === repo.full_name}
+                            onChange={(e) => setSelectedRepository(e.target.value)}
+                            className="w-4 h-4 text-green-600"
+                          />
+                          <FolderGit2 className="w-5 h-5 text-gray-500 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium text-gray-900 truncate">
+                                {repo.name}
+                              </p>
+                              {repo.private && (
+                                <span className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
+                                  Private
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-500 truncate">
+                              {repo.full_name}
+                            </p>
+                            {repo.description && (
+                              <p className="text-xs text-gray-400 mt-1 line-clamp-1">
+                                {repo.description}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                              {repo.language && <span>{repo.language}</span>}
+                              {repo.stargazers_count > 0 && (
+                                <span>⭐ {repo.stargazers_count}</span>
+                              )}
+                              <span>Updated {new Date(repo.updated_at).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
           ) : (
             <>
               <div className="mb-4">
@@ -305,10 +544,18 @@ export function TicketSelectionDialog({
         </div>
 
         <DialogFooter className="flex items-center gap-2">
-          {step === 'users' && (
+          {step === 'repository' && (
             <Button
               variant="outline"
               onClick={() => setStep('tickets')}
+            >
+              Back
+            </Button>
+          )}
+          {step === 'users' && (
+            <Button
+              variant="outline"
+              onClick={() => setStep('repository')}
             >
               Back
             </Button>
@@ -319,20 +566,27 @@ export function TicketSelectionDialog({
           {step === 'tickets' && (
             <Button
               onClick={() => setIsCreateDialogOpen(true)}
-              className="bg-green-600 hover:bg-green-700 text-white"
+              className="bg-green-600 hover:bg-green-700 text-white flex items-center justify-center"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              New
+              <Plus className="w-4 h-4 mr-2 shrink-0" />
+              <span>New</span>
             </Button>
           )}
           {step === 'tickets' ? (
             <Button
               onClick={() => {
                 if (selectedTicket) {
-                  setStep('users');
+                  setStep('repository');
                 }
               }}
               disabled={!selectedTicket}
+            >
+              Next
+            </Button>
+          ) : step === 'repository' ? (
+            <Button
+              onClick={handleRepositoryNext}
+              disabled={!selectedRepository}
             >
               Next
             </Button>
