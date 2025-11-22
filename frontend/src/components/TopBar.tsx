@@ -11,7 +11,7 @@ export function TopBar() {
               <path d="M4 10L10 4L16 10M4 10L10 16L16 10" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
-          <span className="text-white">Relay</span>
+          <span className="text-white">CodeRoom</span>
         </div>
         
         <div className="relative max-w-md flex-1">
@@ -29,16 +29,8 @@ export function TopBar() {
         <span className="text-gray-300 text-sm">Checkout Revamp</span>
       </div>
 
-      {/* Right: User Controls */}
-      <div className="flex items-center gap-3 flex-1 justify-end">
-        <button className="p-2 hover:bg-gray-800 rounded-md transition-colors relative">
-          <Bell className="w-5 h-5 text-gray-400" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-blue-600 rounded-full"></span>
-        </button>
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center border-2 border-gray-700">
-          <span className="text-white text-sm">JD</span>
-        </div>
-      </div>
+      {/* Right: Empty space for balance */}
+      <div className="flex-1"></div>
     </div>
   );
 }

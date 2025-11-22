@@ -13,6 +13,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Checkbox } from './ui/checkbox';
 import { LinearIssue, LinearUser, fetchLinearIssues, fetchLinearUsers, createLinearIssue } from '../lib/linear';
+import { Search, Loader2, UserPlus, Plus, Github, FolderGit2, CheckCircle2, Calendar, Clock, Circle, PlayCircle, CheckCircle, XCircle, GitMerge, AlertCircle, Copy } from 'lucide-react';
 import { Search, Loader2, UserPlus, Hash, Plus, Github, FolderGit2, CheckCircle2, Calendar, Clock, Circle, PlayCircle, CheckCircle, XCircle, GitMerge, AlertCircle, Copy } from 'lucide-react';
 import { createTicket, createMessage } from '../lib/database';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -67,8 +68,21 @@ export function TicketSelectionDialog({
       ]);
       setTickets(ticketsData);
       setUsers(usersData);
-    } catch {
-      // Error already logged
+      
+      if (ticketsData.length === 0) {
+        toast.info('No tickets found', {
+          description: 'Make sure your Linear API key is configured correctly.',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading Linear data:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load tickets';
+      toast.error('Failed to load Linear tickets', {
+        description: errorMessage.includes('API key') || errorMessage.includes('NEXT_PUBLIC_LINEAR_API_KEY')
+          ? 'Please set your Linear API key in .env.local'
+          : errorMessage,
+        duration: 5000,
+      });
     } finally {
       setLoading(false);
     }

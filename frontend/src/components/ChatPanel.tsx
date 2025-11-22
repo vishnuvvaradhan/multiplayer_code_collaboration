@@ -206,36 +206,126 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
         </div>
       </div>
 
-      {/* Input Bar */}
-      <div className="px-4 pb-4 pt-2 border-t border-gray-200 bg-white">
-        <div className="border border-gray-300 rounded-lg overflow-hidden focus-within:border-blue-500 focus-within:shadow-sm transition-all bg-white">
+      {/* Input Bar - Liquid Glass */}
+      <div 
+        className="px-4 pb-4 pt-2"
+        style={{
+          background: 'linear-gradient(to top, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.4) 100%)',
+          backdropFilter: 'blur(20px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.3)',
+        }}
+      >
+        <div 
+          className="rounded-lg overflow-hidden focus-within:shadow-lg transition-all"
+          style={{
+            background: 'rgba(255, 255, 255, 0.25)',
+            backdropFilter: 'blur(10px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(10px) saturate(180%)',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
+            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
+          }}
+        >
           <input
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Write a comment..."
-            className="w-full px-3 py-2.5 text-sm outline-none bg-white text-gray-900 placeholder-gray-500"
+            className="w-full px-3 py-2.5 text-sm outline-none text-gray-900 placeholder-gray-500"
+            style={{
+              background: 'transparent',
+            }}
           />
-          <div className="flex items-center justify-between px-2 pb-2 border-t border-gray-200">
+          <div 
+            className="flex items-center justify-between px-2 pb-2"
+            style={{
+              borderTop: '1px solid rgba(255, 255, 255, 0.2)',
+            }}
+          >
             <div className="flex items-center gap-1">
-              <button className="p-1.5 hover:bg-gray-100 rounded transition-colors" title="Attach files">
-                <Paperclip className="w-4 h-4 text-gray-600" />
+              <button 
+                className="p-1.5 rounded transition-all" 
+                title="Attach files"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  backdropFilter: 'blur(10px)',
+                  WebkitBackdropFilter: 'blur(10px)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                }}
+              >
+                <Paperclip className="w-4 h-4 text-gray-700" />
               </button>
-              <button className="p-1.5 hover:bg-gray-100 rounded transition-colors" title="Add emoji">
-                <Smile className="w-4 h-4 text-gray-600" />
+              <button 
+                className="p-1.5 rounded transition-all" 
+                title="Add emoji"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  backdropFilter: 'blur(10px)',
+                  WebkitBackdropFilter: 'blur(10px)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                }}
+              >
+                <Smile className="w-4 h-4 text-gray-700" />
               </button>
-              <button className="p-1.5 hover:bg-gray-100 rounded transition-colors" title="Mention">
-                <AtSign className="w-4 h-4 text-gray-600" />
+              <button 
+                className="p-1.5 rounded transition-all" 
+                title="Mention"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  backdropFilter: 'blur(10px)',
+                  WebkitBackdropFilter: 'blur(10px)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                }}
+              >
+                <AtSign className="w-4 h-4 text-gray-700" />
               </button>
             </div>
             <button
               onClick={handleSend}
               disabled={!inputValue.trim() || sending}
-              className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
+              className="p-2 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+              style={{
+                background: sending || !inputValue.trim() 
+                  ? 'rgba(34, 197, 94, 0.5)' 
+                  : 'linear-gradient(135deg, rgba(34, 197, 94, 0.8) 0%, rgba(22, 163, 74, 0.9) 100%)',
+                backdropFilter: 'blur(10px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(10px) saturate(180%)',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                boxShadow: !inputValue.trim() || sending
+                  ? 'none'
+                  : '0 4px 15px rgba(34, 197, 94, 0.4), 0 0 20px rgba(34, 197, 94, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)',
+              }}
+              onMouseEnter={(e) => {
+                if (!sending && inputValue.trim()) {
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(34, 197, 94, 0.6), 0 0 30px rgba(34, 197, 94, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.4)';
+                  e.currentTarget.style.transform = 'scale(1.02)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!sending && inputValue.trim()) {
+                  e.currentTarget.style.boxShadow = '0 4px 15px rgba(34, 197, 94, 0.4), 0 0 20px rgba(34, 197, 94, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }
+              }}
+              title={sending ? 'Sending...' : 'Send'}
             >
               <Send className="w-4 h-4" />
-              <span>{sending ? 'Sending...' : 'Send'}</span>
             </button>
           </div>
         </div>
