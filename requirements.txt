@@ -1,3 +1,5 @@
 fastapi
 uvicorn
 google-genai
+sse-starlette
+#have to install gemini cli separately
