@@ -1,4 +1,4 @@
-import { Hash, ChevronDown, Users, Pin, Search, Info, Smile, Paperclip, AtSign } from 'lucide-react';
+import { Hash, ChevronDown, Users, Pin, Search, Info, Smile, Paperclip, AtSign, Send } from 'lucide-react';
 import { HumanMessage } from './messages/HumanMessage';
 import { AgentMessage } from './messages/AgentMessage';
 import { SystemMessage } from './messages/SystemMessage';
@@ -198,9 +198,10 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen }: Ch
             <button
               onClick={handleSend}
               disabled={!inputValue.trim()}
-              className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
             >
-              Comment
+              <Send className="w-4 h-4" />
+              <span>Send</span>
             </button>
           </div>
         </div>

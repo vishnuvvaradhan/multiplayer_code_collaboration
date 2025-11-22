@@ -1,4 +1,9 @@
+"use client";
+
+import { useState } from 'react';
 import { Plus, Hash, ChevronDown, Circle } from 'lucide-react';
+import { TicketSelectionDialog } from './TicketSelectionDialog';
+import { LinearIssue, LinearUser } from '../lib/linear';
 
 interface Ticket {
   id: string;
@@ -29,32 +34,47 @@ interface LeftSidebarProps {
 }
 
 export function LeftSidebar({ selectedTicket, onSelectTicket }: LeftSidebarProps) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  const handleTicketSelected = (ticket: LinearIssue, selectedUsers: LinearUser[]) => {
+    console.log('Ticket selected:', ticket);
+    console.log('Users selected:', selectedUsers);
+    
+    // TODO: Create group/session with selected ticket and users
+    // For now, just switch to the selected ticket
+    onSelectTicket(ticket.identifier);
+    
+    // You can add logic here to:
+    // - Create a collaboration group/session
+    // - Notify selected users
+    // - Set up the workspace for the ticket
+  };
   return (
-    <div className="w-64 bg-gray-50 border-r border-gray-300 flex flex-col h-full">
+    <div className="w-64 border-r border-purple-900/50 flex flex-col h-full shadow-lg" style={{ backgroundColor: '#350D36' }}>
       {/* Header */}
-      <div className="p-3 border-b border-gray-300 bg-white">
-        <button className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-gray-100 rounded-md transition-colors border border-gray-300">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-gray-900 flex items-center justify-center">
-              <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
-                <path d="M4 10L10 4L16 10M4 10L10 16L16 10" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <div className="p-3 border-b border-purple-900/50" style={{ backgroundColor: '#350D36' }}>
+        <button className="w-full flex items-center justify-between px-3 py-2 hover:bg-purple-700/50 rounded-md transition-all duration-200 border border-purple-600/30 hover:border-purple-500/50 hover:shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-md bg-white flex items-center justify-center shadow-sm">
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                <path d="M4 10L10 4L16 10M4 10L10 16L16 10" stroke="#350D36" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </div>
-            <span className="text-gray-900 text-sm">Relay</span>
+            <span className="text-sm font-bold tracking-wide" style={{ color: '#ffffff' }}>Relay</span>
           </div>
-          <ChevronDown className="w-4 h-4 text-gray-600" />
+          <ChevronDown className="w-4 h-4" style={{ color: '#e9d5ff' }} />
         </button>
       </div>
 
       {/* Tickets Section */}
-      <div className="flex-1 overflow-y-auto p-2">
-        <div className="mb-3">
-          <button className="w-full flex items-center justify-between px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-md transition-colors mb-1">
-            <span className="font-semibold">Tickets</span>
-            <ChevronDown className="w-3.5 h-3.5 text-gray-600" />
+      <div className="flex-1 overflow-y-auto p-3">
+        <div className="mb-4">
+          <button className="w-full flex items-center justify-between px-2.5 py-2 text-xs hover:bg-purple-700/40 rounded-md transition-all duration-200 mb-2 hover:shadow-sm" style={{ color: '#f3e8ff' }}>
+            <span className="font-bold uppercase tracking-wider" style={{ color: '#f3e8ff' }}>Tickets</span>
+            <ChevronDown className="w-3.5 h-3.5" style={{ color: '#e9d5ff' }} />
           </button>
           
-          <div className="space-y-0.5">
+          <div className="space-y-1">
             {tickets.map((ticket) => {
               const isSelected = ticket.id === selectedTicket;
               const config = statusConfig[ticket.status];
@@ -63,23 +83,42 @@ export function LeftSidebar({ selectedTicket, onSelectTicket }: LeftSidebarProps
                 <button
                   key={ticket.id}
                   onClick={() => onSelectTicket(ticket.id)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-all group ${
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all duration-200 ease-in-out group relative ${
                     isSelected
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-gray-700 hover:bg-gray-200'
+                      ? 'shadow-md'
+                      : 'hover:bg-purple-700/50 hover:shadow-sm'
                   }`}
+                  style={{
+                    transform: isSelected ? 'scale(1.02)' : 'scale(1)',
+                    color: isSelected ? '#350D36' : '#f3e8ff',
+                    backgroundColor: isSelected ? '#ffffff' : 'transparent',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.transform = 'scale(1.01)';
+                      const hashIcon = e.currentTarget.querySelector('svg');
+                      if (hashIcon) hashIcon.style.color = '#f3e8ff';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.transform = 'scale(1)';
+                      const hashIcon = e.currentTarget.querySelector('svg');
+                      if (hashIcon) hashIcon.style.color = '#c084fc';
+                    }
+                  }}
                 >
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <Hash className={`w-3.5 h-3.5 flex-shrink-0 ${isSelected ? 'text-white' : 'text-gray-500'}`} />
-                    <span className="truncate">{ticket.title.toLowerCase().replace(/\s+/g, '-')}</span>
+                  <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                    <Hash className="w-4 h-4 shrink-0 transition-colors duration-200" style={{ color: isSelected ? '#350D36' : '#c084fc' }} />
+                    <span className="truncate font-medium" style={{ color: isSelected ? '#350D36' : '#f3e8ff' }}>{ticket.title.toLowerCase().replace(/\s+/g, '-')}</span>
                   </div>
                   {ticket.unread && !isSelected && (
-                    <span className="px-1.5 py-0.5 bg-blue-600 text-white rounded-full text-xs font-medium min-w-[18px] text-center">
+                    <span className="px-2 py-0.5 bg-white text-[#350D36] rounded-full text-xs font-bold min-w-[20px] text-center shadow-sm">
                       {ticket.unread}
                     </span>
                   )}
                   {isSelected && (
-                    <Circle className={`w-2 h-2 flex-shrink-0 ${config.color} fill-current`} />
+                    <Circle className={`w-2.5 h-2.5 shrink-0 ${config.color} fill-current animate-pulse`} />
                   )}
                 </button>
               );
@@ -87,12 +126,30 @@ export function LeftSidebar({ selectedTicket, onSelectTicket }: LeftSidebarProps
           </div>
         </div>
 
-        {/* Add ticket button */}
-        <button className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-md transition-colors">
-          <Plus className="w-4 h-4" />
-          <span>Add ticket</span>
+        {/* Create button */}
+        <button
+          onClick={() => setIsDialogOpen(true)}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-all duration-200 font-medium hover:shadow-md border border-green-700 bg-green-600 hover:bg-green-700 text-white relative"
+          style={{ 
+            transform: 'scale(1)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'scale(1.01)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          <Plus className="w-4 h-4 shrink-0" style={{ position: 'absolute', left: '12px' }} />
+          <span className="text-sm font-semibold">Create</span>
         </button>
       </div>
+
+      <TicketSelectionDialog
+        open={isDialogOpen}
+        onOpenChange={setIsDialogOpen}
+        onSelectTicket={handleTicketSelected}
+      />
     </div>
   );
 }
