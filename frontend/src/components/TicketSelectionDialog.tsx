@@ -14,6 +14,7 @@ import { Input } from './ui/input';
 import { Checkbox } from './ui/checkbox';
 import { LinearIssue, LinearUser, fetchLinearIssues, fetchLinearUsers, createLinearIssue } from '../lib/linear';
 import { Search, Loader2, UserPlus, Hash, Plus, Github, FolderGit2, CheckCircle2 } from 'lucide-react';
+import { createTicket, createMessage } from '../lib/database';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
@@ -173,7 +174,7 @@ export function TicketSelectionDialog({
     }
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (selectedTicket && selectedRepository) {
       const selectedUsersList = users.filter((user) =>
         selectedUsers.has(user.id)
@@ -192,15 +193,37 @@ export function TicketSelectionDialog({
         name: selectedRepository.split('/')[1] || selectedRepository,
       };
       
-      // Log for testing
-      console.log('🔍 Creating group with repository:', {
-        ticket: selectedTicket.identifier,
-        users: selectedUsersList.map(u => u.displayName),
-        repository: repositoryInfo,
-      });
-      
-      onSelectTicket(selectedTicket, selectedUsersList, repositoryInfo);
-      onOpenChange(false);
+      try {
+        // Create ticket in Supabase
+        const dbTicket = await createTicket({
+          ticket_identifier: selectedTicket.identifier,
+          ticket_name: selectedTicket.title,
+          description: selectedTicket.description || undefined,
+          priority: selectedTicket.priority || undefined,
+          github_url: repositoryInfo.url,
+          people: selectedUsersList.map(u => u.displayName),
+        });
+
+        // Create initial system message
+        await createMessage({
+          ticket_id: dbTicket.id,
+          user_or_agent: 'System',
+          message_type: 'system',
+          content: `Ticket ${selectedTicket.identifier} created`,
+        });
+
+        toast.success('Group created successfully!', {
+          description: `${selectedTicket.identifier}: ${selectedTicket.title}`,
+        });
+        
+        onSelectTicket(selectedTicket, selectedUsersList, repositoryInfo);
+        onOpenChange(false);
+      } catch (error) {
+        console.error('Error creating group:', error);
+        toast.error('Failed to create group', {
+          description: error instanceof Error ? error.message : 'Please try again',
+        });
+      }
     }
   };
 
@@ -209,6 +232,7 @@ export function TicketSelectionDialog({
 
     setCreating(true);
     try {
+      // Create ticket in Linear
       const newTicket = await createLinearIssue({
         title: newTicketTitle,
         description: newTicketDescription || undefined,
@@ -235,7 +259,7 @@ export function TicketSelectionDialog({
       setNewTicketDescription('');
       setNewTicketPriority(0);
       
-      // Move to repository step
+      // Move to repository step (will sync to Supabase when user completes the flow)
       setStep('repository');
     } catch (error) {
       console.error('Error creating ticket:', error);

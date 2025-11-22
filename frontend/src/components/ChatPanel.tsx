@@ -6,7 +6,12 @@ import { ArchitectPlanCard } from './messages/ArchitectPlanCard';
 import { DiffGeneratedCard } from './messages/DiffGeneratedCard';
 import { EmptyState } from './EmptyState';
 import { LoadingState } from './LoadingState';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useMessages } from '@/hooks/useMessages';
+import { createMessage, formatTimestamp, getUserInitials } from '@/lib/database';
+import { getCurrentUserName } from '@/lib/supabase';
+import { getTicketByIdentifier } from '@/lib/database';
+import { toast } from 'sonner';
 
 interface ChatPanelProps {
   ticketId: string;
@@ -16,103 +21,79 @@ interface ChatPanelProps {
   repositoryName?: string;
 }
 
-type Message = 
-  | { type: 'system'; content: string; timestamp: string }
-  | { type: 'human'; content: string; author: string; avatar: string; timestamp: string }
-  | { type: 'agent'; content: string; agent: string; author: string; timestamp: string }
-  | { type: 'architect-plan'; timestamp: string }
-  | { type: 'diff-generated'; timestamp: string };
-
-const defaultMessages: Message[] = [
-  {
-    type: 'system',
-    content: 'Ticket created',
-    timestamp: '10:23 AM',
-  },
-  {
-    type: 'human',
-    content: 'We need to add validation for payment methods in the checkout flow. Users should see clear error messages if the card is invalid.',
-    author: 'Jane Doe',
-    avatar: 'JD',
-    timestamp: '10:24 AM',
-  },
-  {
-    type: 'agent',
-    agent: 'architect',
-    content: 'I\'ll create a plan for implementing payment method validation. Let me analyze the current checkout implementation.',
-    author: 'Architect',
-    timestamp: '10:24 AM',
-  },
-  {
-    type: 'architect-plan',
-    timestamp: '10:25 AM',
-  },
-  {
-    type: 'human',
-    content: 'Looks good! Please implement this.',
-    author: 'Jane Doe',
-    avatar: 'JD',
-    timestamp: '10:27 AM',
-  },
-  {
-    type: 'system',
-    content: 'Plan approved by Jane Doe',
-    timestamp: '10:27 AM',
-  },
-  {
-    type: 'agent',
-    agent: 'dev',
-    content: 'Starting implementation based on the approved plan. I\'ll create the validation logic and error handling components.',
-    author: 'Dev Agent',
-    timestamp: '10:28 AM',
-  },
-  {
-    type: 'diff-generated',
-    timestamp: '10:29 AM',
-  },
-  {
-    type: 'human',
-    content: 'Perfect! The validation is working great.',
-    author: 'Mike Kim',
-    avatar: 'MK',
-    timestamp: '10:31 AM',
-  },
-];
-
 export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repositoryUrl, repositoryName }: ChatPanelProps) {
-  // Log repository info when it changes
-  useEffect(() => {
-    if (repositoryUrl) {
-      console.log('💬 ChatPanel received repository context:', {
-        url: repositoryUrl,
-        name: repositoryName,
-        ticketId,
-      });
-    } else {
-      console.log('💬 ChatPanel: No repository context available');
-    }
-  }, [repositoryUrl, repositoryName, ticketId]);
-
-  // Initialize messages with repository context if available
-  const initialMessages: Message[] = repositoryUrl 
-    ? [
-        {
-          type: 'system',
-          content: `Repository context: ${repositoryName || repositoryUrl}\nThis chat is connected to the GitHub repository for agent context. The agent can access code and context from: ${repositoryUrl}`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        },
-        ...defaultMessages,
-      ]
-    : defaultMessages;
-
-  const [messages] = useState<Message[]>(initialMessages);
   const [inputValue, setInputValue] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [ticketDbId, setTicketDbId] = useState<string | null>(null);
+  const [ticketName, setTicketName] = useState<string>('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const currentUser = getCurrentUserName();
 
-  const handleSend = () => {
-    if (inputValue.trim()) {
-      setInputValue('');
-      // Handle send logic
+  // Fetch ticket from database to get its ID
+  useEffect(() => {
+    async function fetchTicket() {
+      try {
+        const ticket = await getTicketByIdentifier(ticketId);
+        if (ticket) {
+          setTicketDbId(ticket.id);
+          setTicketName(ticket.ticket_name);
+        }
+      } catch (error) {
+        console.error('Error fetching ticket:', error);
+        toast.error('Failed to load ticket');
+      }
+    }
+    fetchTicket();
+  }, [ticketId]);
+
+  // Use the messages hook for polling
+  const { messages: dbMessages, loading, error } = useMessages({
+    ticketId: ticketDbId,
+    enabled: !!ticketDbId,
+  });
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [dbMessages]);
+
+  // Show error toast if there's an error
+  useEffect(() => {
+    if (error) {
+      toast.error('Failed to load messages', {
+        description: error,
+      });
+    }
+  }, [error]);
+
+  const handleSend = async () => {
+    if (!inputValue.trim() || !ticketDbId || sending) return;
+
+    const messageContent = inputValue.trim();
+    setInputValue('');
+    setSending(true);
+
+    try {
+      await createMessage({
+        ticket_id: ticketDbId,
+        user_or_agent: currentUser,
+        message_type: 'human',
+        content: messageContent,
+        metadata: {
+          avatar: getUserInitials(currentUser),
+        },
+      });
+
+      // Message will appear via polling
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast.error('Failed to send message', {
+        description: error instanceof Error ? error.message : 'Please try again',
+      });
+      // Restore the message in input
+      setInputValue(messageContent);
+    } finally {
+      setSending(false);
     }
   };
 
@@ -122,7 +103,7 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
       <div className="h-14 border-b border-gray-300 flex items-center justify-between px-4 bg-white shadow-sm">
         <div className="flex items-center gap-2">
           <Hash className="w-5 h-5 text-gray-600" />
-          <h1 className="text-gray-900">add-payment-method-validation</h1>
+          <h1 className="text-gray-900">{ticketName || ticketId}</h1>
           <ChevronDown className="w-4 h-4 text-gray-500" />
           {repositoryUrl && (
             <a
@@ -168,53 +149,60 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-none">
-          {messages.map((message, index) => {
-            if (message.type === 'system') {
-              return (
-                <SystemMessage
-                  key={index}
-                  content={message.content || ''}
-                  timestamp={message.timestamp}
-                />
-              );
-            }
+          {loading && dbMessages.length === 0 ? (
+            <LoadingState />
+          ) : dbMessages.length === 0 ? (
+            <EmptyState />
+          ) : (
+            dbMessages.map((message) => {
+              const formattedTimestamp = formatTimestamp(message.timestamp);
 
-            if (message.type === 'human') {
-              return (
-                <HumanMessage
-                  key={index}
-                  content={message.content || ''}
-                  author={message.author}
-                  avatar={message.avatar}
-                  timestamp={message.timestamp}
-                />
-              );
-            }
+              if (message.message_type === 'system') {
+                return (
+                  <SystemMessage
+                    key={message.id}
+                    content={message.content || ''}
+                    timestamp={formattedTimestamp}
+                  />
+                );
+              }
 
-            if (message.type === 'agent') {
-              return (
-                <AgentMessage
-                  key={index}
-                  content={message.content || ''}
-                  agent={message.agent as 'architect' | 'dev'}
-                  author={message.author}
-                  timestamp={message.timestamp}
-                />
-              );
-            }
+              if (message.message_type === 'human') {
+                return (
+                  <HumanMessage
+                    key={message.id}
+                    content={message.content || ''}
+                    author={message.user_or_agent}
+                    avatar={message.metadata?.avatar || getUserInitials(message.user_or_agent)}
+                    timestamp={formattedTimestamp}
+                  />
+                );
+              }
 
-            if (message.type === 'architect-plan') {
-              return <ArchitectPlanCard key={index} timestamp={message.timestamp} />;
-            }
+              if (message.message_type === 'agent') {
+                return (
+                  <AgentMessage
+                    key={message.id}
+                    content={message.content || ''}
+                    agent={message.metadata?.agent || 'dev'}
+                    author={message.user_or_agent}
+                    timestamp={formattedTimestamp}
+                  />
+                );
+              }
 
-            if (message.type === 'diff-generated') {
-              return <DiffGeneratedCard key={index} timestamp={message.timestamp} />;
-            }
+              if (message.message_type === 'architect-plan') {
+                return <ArchitectPlanCard key={message.id} timestamp={formattedTimestamp} />;
+              }
 
-            return null;
-          })}
+              if (message.message_type === 'diff-generated') {
+                return <DiffGeneratedCard key={message.id} timestamp={formattedTimestamp} />;
+              }
 
-          {isLoading && <LoadingState />}
+              return null;
+            })
+          )}
+          <div ref={messagesEndRef} />
         </div>
       </div>
 
@@ -243,11 +231,11 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
             </div>
             <button
               onClick={handleSend}
-              disabled={!inputValue.trim()}
+              disabled={!inputValue.trim() || sending}
               className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
             >
               <Send className="w-4 h-4" />
-              <span>Send</span>
+              <span>{sending ? 'Sending...' : 'Send'}</span>
             </button>
           </div>
         </div>
