@@ -67,8 +67,21 @@ export function TicketSelectionDialog({
       ]);
       setTickets(ticketsData);
       setUsers(usersData);
-    } catch {
-      // Error already logged
+      
+      if (ticketsData.length === 0) {
+        toast.info('No tickets found', {
+          description: 'Make sure your Linear API key is configured correctly.',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading Linear data:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load tickets';
+      toast.error('Failed to load Linear tickets', {
+        description: errorMessage.includes('API key') || errorMessage.includes('NEXT_PUBLIC_LINEAR_API_KEY')
+          ? 'Please set your Linear API key in .env.local'
+          : errorMessage,
+        duration: 5000,
+      });
     } finally {
       setLoading(false);
     }
