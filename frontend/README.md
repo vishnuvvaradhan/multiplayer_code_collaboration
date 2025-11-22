@@ -10,6 +10,24 @@ First, install dependencies:
 npm install
 ```
 
+### Environment Setup
+
+Create a `.env.local` file in the `frontend` directory with your Linear API key:
+
+```bash
+cp .env.example .env.local
+```
+
+Then edit `.env.local` and add your Linear API key:
+
+```
+NEXT_PUBLIC_LINEAR_API_KEY=your_linear_api_key_here
+```
+
+Get your API key from: https://linear.app/settings/api
+
+**Note**: The `.env.local` file is gitignored and will not be committed to the repository.
+
 Then, run the development server:
 
 ```bash
