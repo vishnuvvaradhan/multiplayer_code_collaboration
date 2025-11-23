@@ -189,29 +189,8 @@ Do NOT make any code changes - just provide guidance.`;
           fullResponse += chunk;
         }
 
-        // Clean up the response by removing any remaining SSE formatting artifacts
-        const cleanResponse = fullResponse
-          .split('\n')
-          .map(line => {
-            // Remove "data:" prefix if it exists at the start of the line (case insensitive)
-            let cleaned = line;
-            // Handle both "data:" and "data: " (with space)
-            if (cleaned.trim().toLowerCase().startsWith('data:')) {
-              const dataIndex = cleaned.toLowerCase().indexOf('data:');
-              cleaned = cleaned.substring(dataIndex + 5).trimStart();
-            }
-            return cleaned;
-          })
-          .filter(line => {
-            const trimmed = line.trim();
-            // Remove empty lines and end markers
-            return trimmed && 
-                   trimmed !== '__END__' && 
-                   trimmed !== 'END' &&
-                   !trimmed.toLowerCase().startsWith('data:');
-          })
-          .join('\n')
-          .trim();
+        // Clean up the response
+        const cleanResponse = fullResponse.trim();
 
         // Delete the thinking message before creating the actual response
         try {
@@ -553,29 +532,8 @@ Do NOT make any code changes - just provide guidance.`;
             fullResponse += chunk;
           }
 
-          // Clean up the response by removing any remaining SSE formatting artifacts
-          const cleanResponse = fullResponse
-            .split('\n')
-            .map(line => {
-              // Remove "data:" prefix if it exists at the start of the line (case insensitive)
-              let cleaned = line;
-              // Handle both "data:" and "data: " (with space)
-              if (cleaned.trim().toLowerCase().startsWith('data:')) {
-                const dataIndex = cleaned.toLowerCase().indexOf('data:');
-                cleaned = cleaned.substring(dataIndex + 5).trimStart();
-              }
-              return cleaned;
-            })
-            .filter(line => {
-              const trimmed = line.trim();
-              // Remove empty lines and end markers
-              return trimmed && 
-                     trimmed !== '__END__' && 
-                     trimmed !== 'END' &&
-                     !trimmed.toLowerCase().startsWith('data:');
-            })
-            .join('\n')
-            .trim();
+          // Clean up the response
+          const cleanResponse = fullResponse.trim();
 
           // Delete the thinking message before creating the actual response
           try {

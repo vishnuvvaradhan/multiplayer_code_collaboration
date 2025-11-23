@@ -21,7 +21,7 @@ import json
 import subprocess
 import time
 from typing import Generator, Dict
-from database import get_messages_by_ticket_identifier, format_chat_history
+from database import get_messages_by_ticket_identifier, format_chat_history, get_ticket_by_identifier
 
 TICKETS_ROOT = "./tickets"          # Root directory for all ticket repos
 SESSION_STORE: Dict[str, str] = {}  # ticket_id -> Gemini session UUID
@@ -49,7 +49,8 @@ def stream_subprocess(cmd, cwd: str) -> Generator[str, None, None]:
             # Remove "data: " prefix if Gemini CLI adds it
             cleaned_line = line
             if cleaned_line.strip().startswith('data:'):
-                cleaned_line = cleaned_line.strip()[5:].strip()  # Remove "data:" prefix
+                # Remove "data:" (5 chars) and any following whitespace
+                cleaned_line = cleaned_line.strip()[5:].lstrip()
             
             # Skip empty lines and __END__ markers from Gemini
             if cleaned_line.strip() and cleaned_line.strip() != '__END__':
@@ -113,6 +114,7 @@ def get_or_create_session(ticket_id: str) -> str:
          d) Cache it in SESSION_STORE and return.
     """
     if ticket_id in SESSION_STORE:
+        print(f"[DEBUG] get_or_create_session: Reusing existing session for {ticket_id}: {SESSION_STORE[ticket_id]}")
         return SESSION_STORE[ticket_id]
 
     workspace = _ensure_workspace(ticket_id)
@@ -148,6 +150,7 @@ def get_or_create_session(ticket_id: str) -> str:
 
     # Step (d): cache and return
     SESSION_STORE[ticket_id] = session_uuid
+    print(f"[DEBUG] get_or_create_session: Created new session for {ticket_id}: {session_uuid}")
     return session_uuid
 
 
@@ -160,15 +163,23 @@ def run_gemini_prompt(ticket_id: str, prompt: str) -> Generator[str, None, None]
       - ensures a session UUID exists for this ticket
       - runs: gemini -p "<prompt>" --resume=<session_uuid>
     """
+    print(f"[DEBUG] run_gemini_prompt called for {ticket_id}")
+    print(f"[DEBUG] Prompt length: {len(prompt)} characters")
+    print(f"[DEBUG] Prompt preview: {prompt[:200]}...")
+    
     try:
         workspace = _ensure_workspace(ticket_id)
+        print(f"[DEBUG] Workspace: {workspace}")
     except FileNotFoundError as e:
+        print(f"[DEBUG] Workspace error: {e}")
         yield f"Error: {e}\n"
         return
 
     try:
         session_uuid = get_or_create_session(ticket_id)
+        print(f"[DEBUG] Using session: {session_uuid}")
     except Exception as e:
+        print(f"[DEBUG] Session error: {e}")
         yield f"Error: failed to create/resume session for ticket '{ticket_id}': {e}\n"
         return
 
@@ -180,6 +191,8 @@ def run_gemini_prompt(ticket_id: str, prompt: str) -> Generator[str, None, None]
         # You can add output format if you want structured streaming later:
         # "--output-format=stream-json",
     ]
+    
+    print(f"[DEBUG] Running command: {' '.join(cmd[:2])} ... --resume={session_uuid}")
 
     yield from stream_subprocess(cmd, cwd=workspace)
 
@@ -222,14 +235,49 @@ def gemini_chat(ticket_id: str, prompt: str) -> Generator[str, None, None]:
 # -----------------------------------------------------------------------------
 def get_chat_context(ticket_id: str) -> str:
     """
-    Get the chat history for a ticket to provide context for planning and development.
-    Returns formatted conversation history from Supabase.
+    Get the complete context for a ticket including meta and chat history.
+    Returns formatted ticket information and conversation history from Supabase.
     ticket_id can be either a UUID or human-readable identifier (e.g., "COD-28")
+    
+    [DEBUG] This function retrieves ticket context from Supabase.
     """
     try:
+        print(f"[DEBUG] get_chat_context: Fetching context for {ticket_id}")
+        # Get ticket metadata
+        ticket_info = get_ticket_by_identifier(ticket_id)
+        print(f"[DEBUG] get_chat_context: Got ticket info")
+
+        # Get conversation messages
         messages = get_messages_by_ticket_identifier(ticket_id)
-        return format_chat_history(messages)
+        print(f"[DEBUG] get_chat_context: Retrieved {len(messages)} messages")
+
+        # Format ticket information section
+        ticket_section = ""
+        if ticket_info:
+            ticket_section = f"""# TICKET INFORMATION
+
+**Ticket ID:** {ticket_info.get('ticket_identifier', ticket_id)}
+**Title:** {ticket_info.get('ticket_name', 'No title')}
+**Description:** {ticket_info.get('description', 'No description provided')}
+**Priority:** {ticket_info.get('priority', 'Not set')}
+**Repository:** {ticket_info.get('github_url', 'No repository linked')}
+
+---
+"""
+
+        # Format conversation history section
+        chat_section = f"""
+# CONVERSATION HISTORY
+
+{format_chat_history(messages)}
+"""
+
+        final_context = ticket_section + chat_section
+        print(f"[DEBUG] get_chat_context: Final context length: {len(final_context)} characters")
+        return final_context
+
     except Exception as e:
+        print(f"[DEBUG] get_chat_context ERROR for {ticket_id}: {e}")
         print(f"Error fetching chat context for ticket {ticket_id}: {e}")
         return "Error: Could not retrieve conversation history."
 
@@ -287,18 +335,53 @@ def gemini_make_plan(ticket_id: str) -> Generator[str, None, None]:
 
 
 # -----------------------------------------------------------------------------
+# Internal helper: apply .new files directly
+# -----------------------------------------------------------------------------
+def _apply_new_files_directly(workspace: str, files_to_modify) -> int:
+    """
+    Apply the generated .new files by moving them into place.
+
+    For each path in files_to_modify, if "<path>.new" exists under the workspace,
+    it is atomically replaced as "<path>".
+
+    Returns the number of files successfully applied.
+    """
+    applied = 0
+    for file_path in files_to_modify:
+        full_path = os.path.join(workspace, file_path)
+        new_path = full_path + ".new"
+
+        if not os.path.exists(new_path):
+            continue
+
+        parent_dir = os.path.dirname(full_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+
+        # Atomically replace or create the target file
+        os.replace(new_path, full_path)
+        applied += 1
+
+    return applied
+
+
+# -----------------------------------------------------------------------------
 # @dev — implement the plan (code edits, commit, push, PR)
 # -----------------------------------------------------------------------------
 def gemini_dev(ticket_id: str) -> Generator[str, None, None]:
     """
-    Handle @dev:
-
-    We:
-      - Ensure plan.md exists.
-      - Ask Gemini to generate structured JSON edits based on plan.md.
-      - Apply each edit using search/replace.
-      - Save the changes JSON for reference.
-      - Then git add/commit/push and create/update a GitHub PR via `gh`.
+    Handle @dev using deterministic full-file replacements:
+    
+      1. Read plan.md
+      2. Ask Gemini which files need to be modified
+      3. For each file, ask Gemini to generate the COMPLETE new version
+      4. Save new versions as {filename}.new
+      5. Optionally create diffs for debugging
+      6. Move .new files into place
+      7. Commit and push
+      
+    This is deterministic because we always replace whole files with
+    LLM-generated versions rather than doing in-place edits.
     """
     try:
         workspace = _ensure_workspace(ticket_id)
@@ -308,131 +391,345 @@ def gemini_dev(ticket_id: str) -> Generator[str, None, None]:
 
     plan_path = os.path.join(workspace, "plan.md")
     if not os.path.exists(plan_path):
-        yield "Error: plan.md not found. Run @plan first.\n"
+        yield "Error: plan.md not found. Run @make_plan first.\n"
         return
 
-    changes_filename = f"{ticket_id}_changes.json"
-    changes_path = os.path.join(workspace, changes_filename)
-
-    prompt_text = (
+    # =========================================================================
+    # STEP 1: Ask Gemini which files need to be modified
+    # =========================================================================
+    yield "\n📋 Step 1: Identifying files to modify...\n"
+    
+    files_prompt = (
         "You are the development agent for this ticket.\n"
-        "Read `plan.md` in this repository and generate structured edits to implement the plan.\n\n"
-        "CRITICAL REQUIREMENTS:\n"
-        "- Output ONLY valid JSON (no markdown, no code fences, no explanations)\n"
-        "- Use this exact structure:\n"
-        "{\n"
-        '  "files": [\n'
-        "    {\n"
-        '      "path": "relative/path/to/file.ext",\n'
-        '      "changes": [\n'
-        "        {\n"
-        '          "search": "exact text to find (can be multiple lines)",\n'
-        '          "replace": "exact text to replace with (can be multiple lines)"\n'
-        "        }\n"
-        "      ]\n"
-        "    }\n"
-        "  ]\n"
-        "}\n\n"
-        "IMPORTANT:\n"
-        "- Each 'search' string must be unique and match EXACTLY (including whitespace)\n"
-        "- Include enough context in 'search' to make it unique (5-10 lines)\n"
-        "- 'replace' should be the complete replacement text\n"
-        "- Use \\n for newlines in JSON strings\n"
-        "- Do NOT modify `plan.md` itself\n"
-        "- Output ONLY the JSON, nothing else\n\n"
-        "Generate the changes JSON now:"
+        "Read `plan.md` in this repository.\n\n"
+        "Based on the plan, list ALL files that need to be modified or created.\n"
+        "Output ONLY a JSON array of file paths (relative to repo root).\n"
+        "Do NOT include plan.md itself.\n\n"
+        "Example output:\n"
+        '["src/components/App.tsx", "src/styles/main.css", "README.md"]\n\n'
+        "Output the JSON array now:"
     )
-
-    # Collect the JSON output from Gemini
+    
     collected_output = []
-    
-    for line in run_gemini_prompt(ticket_id, prompt_text):
+    for line in run_gemini_prompt(ticket_id, files_prompt):
         collected_output.append(line)
-        yield line  # Stream to SSE
-
-    json_content = "".join(collected_output).strip()
+        yield line
     
-    # Clean up - remove markdown code fences if present
-    if json_content.startswith("```json"):
-        json_content = json_content[7:].lstrip()
-    elif json_content.startswith("```"):
-        json_content = json_content[3:].lstrip()
+    files_json = "".join(collected_output).strip()
+    print(f"[DEBUG] Step 1 - Raw Gemini output length: {len(files_json)} characters")
+    print(f"[DEBUG] Step 1 - Raw output preview: {files_json[:300]}")
     
-    if json_content.endswith("```"):
-        json_content = json_content[:-3].rstrip()
+    # Clean up markdown fences
+    if files_json.startswith("```json"):
+        files_json = files_json[7:].lstrip()
+    elif files_json.startswith("```"):
+        files_json = files_json[3:].lstrip()
+    if files_json.endswith("```"):
+        files_json = files_json[:-3].rstrip()
     
-    # Parse the JSON
+    print(f"[DEBUG] Step 1 - After cleanup: {files_json[:300]}")
+    
     try:
-        changes_data = json.loads(json_content)
-    except json.JSONDecodeError as e:
-        yield f"\n❌ Failed to parse JSON: {e}\n"
-        yield "Saving raw output for debugging...\n"
-        with open(changes_path, "w") as f:
-            f.write(json_content)
+        files_to_modify = json.loads(files_json)
+        if not isinstance(files_to_modify, list):
+            raise ValueError("Expected a JSON array of file paths")
+        print(f"[DEBUG] Step 1 - Successfully parsed {len(files_to_modify)} files")
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"[DEBUG] Step 1 - JSON parse error: {e}")
+        yield f"\n❌ Failed to parse file list: {e}\n"
+        yield f"Raw output: {files_json[:200]}...\n"
         return
     
-    # Save the changes JSON for reference
-    with open(changes_path, "w") as f:
-        json.dump(changes_data, f, indent=2)
+    yield f"\n✅ Found {len(files_to_modify)} file(s) to modify:\n"
+    for file_path in files_to_modify:
+        yield f"   - {file_path}\n"
     
-    yield f"\n✅ Changes JSON generated: {changes_filename}\n"
+    # =========================================================================
+    # STEP 2: Generate complete new version of each file
+    # =========================================================================
+    yield "\n📝 Step 2: Generating new file contents...\n"
     
-    # Apply each change
-    files_changed = 0
-    total_changes = 0
+    files_generated = 0
     
-    yield "\n📝 Applying changes to files...\n"
-    
-    for file_entry in changes_data.get("files", []):
-        file_path = os.path.join(workspace, file_entry["path"])
+    for file_path in files_to_modify:
+        full_path = os.path.join(workspace, file_path)
+        new_path = full_path + ".new"
         
-        yield f"\n🔍 Processing: {file_entry['path']}\n"
+        print(f"[DEBUG] Step 2 - Processing file: {file_path}")
+        print(f"[DEBUG] Step 2 - Full path: {full_path}")
+        print(f"[DEBUG] Step 2 - New path: {new_path}")
         
-        if not os.path.exists(file_path):
-            yield f"⚠️  File not found: {file_path}\n"
-            yield f"   (Looking in workspace: {workspace})\n"
+        yield f"\n🔄 Generating: {file_path}\n"
+        
+        # Check if file exists (for context)
+        file_exists = os.path.exists(full_path)
+        print(f"[DEBUG] Step 2 - File exists: {file_exists}")
+        
+        if file_exists:
+            file_gen_prompt = (
+                f"Generate the COMPLETE new version of `{file_path}`.\n"
+                f"The current file exists - read it first to understand its structure.\n"
+                f"Then output the ENTIRE modified file content.\n\n"
+                f"IMPORTANT:\n"
+                f"- Output ONLY the file content (no explanations, no markdown fences)\n"
+                f"- Include ALL necessary imports, functions, and code\n"
+                f"- The output should be valid, runnable code\n"
+                f"- Do NOT add comments like '// ... rest of file ...'\n"
+                f"- Generate the COMPLETE file\n\n"
+                f"Generate the complete new version of {file_path} now:"
+            )
+        else:
+            file_gen_prompt = (
+                f"Create a NEW file `{file_path}` based on the plan.\n"
+                f"Output the COMPLETE file content.\n\n"
+                f"IMPORTANT:\n"
+                f"- Output ONLY the file content (no explanations, no markdown fences)\n"
+                f"- Include ALL necessary imports, functions, and code\n"
+                f"- The output should be valid, runnable code\n"
+                f"- Generate the COMPLETE file\n\n"
+                f"Generate the complete content for {file_path} now:"
+            )
+        
+        # Collect the generated file content
+        file_content_lines = []
+        try:
+            print(f"[DEBUG] Step 2 - Calling Gemini for {file_path}")
+            for line in run_gemini_prompt(ticket_id, file_gen_prompt):
+                file_content_lines.append(line)
+            print(f"[DEBUG] Step 2 - Gemini returned {len(file_content_lines)} lines")
+        except Exception as e:
+            print(f"[DEBUG] Step 2 - Exception during generation: {e}")
+            yield f"   ❌ Error generating content for {file_path}: {e}\n"
             continue
         
-        # Read the file
-        with open(file_path, "r") as f:
-            content = f.read()
+        file_content = "".join(file_content_lines).strip()
+        print(f"[DEBUG] Step 2 - Content length after join: {len(file_content)} characters")
+        print(f"[DEBUG] Step 2 - Content preview: {file_content[:200]}")
         
-        original_content = content
-        changes_applied = 0
+        # Check if we got any content
+        if not file_content:
+            print(f"[DEBUG] Step 2 - WARNING: Empty content for {file_path}")
+            yield f"   ⚠️  Warning: No content generated for {file_path}, skipping\n"
+            continue
         
-        # Apply each change
-        for idx, change in enumerate(file_entry.get("changes", []), 1):
-            search_text = change.get("search", "")
-            replace_text = change.get("replace", "")
+        # Clean up any markdown fences that might have snuck in
+        if file_content.startswith("```"):
+            # Remove first line (```language)
+            lines = file_content.split('\n')
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            file_content = '\n'.join(lines)
+        
+        # Write the new version
+        try:
+            # Ensure the directory exists before writing
+            parent_dir = os.path.dirname(new_path)
+            print(f"[DEBUG] Step 2 - Parent dir: {parent_dir}")
+            if parent_dir:
+                os.makedirs(parent_dir, exist_ok=True)
+                print(f"[DEBUG] Step 2 - Created parent directory")
             
-            if not search_text and replace_text:
-                # This is a new file creation
-                content = replace_text
-                changes_applied += 1
-                total_changes += 1
-                yield f"   ✅ Change {idx}: Creating new file content\n"
-            elif search_text in content:
-                content = content.replace(search_text, replace_text, 1)  # Replace only first occurrence
-                changes_applied += 1
-                total_changes += 1
-                yield f"   ✅ Change {idx}: Applied successfully\n"
-            else:
-                yield f"   ⚠️  Change {idx}: Search text not found, skipping...\n"
-                # Show first 100 chars of search text for debugging
-                search_preview = search_text[:100].replace('\n', '\\n')
-                yield f"      Looking for: {search_preview}...\n"
-        
-        # Write back if changes were made
-        if content != original_content:
-            with open(file_path, "w") as f:
-                f.write(content)
-            files_changed += 1
-            yield f"✅ Saved {file_entry['path']} with {changes_applied} change(s)\n"
-        else:
-            yield f"⚠️  No changes applied to {file_entry['path']}\n"
+            print(f"[DEBUG] Step 2 - Writing to {new_path}")
+            with open(new_path, "w") as f:
+                f.write(file_content)
+            print(f"[DEBUG] Step 2 - File written successfully")
+            
+            # Verify the file was actually created
+            if not os.path.exists(new_path):
+                print(f"[DEBUG] Step 2 - ERROR: File doesn't exist after writing!")
+                yield f"   ❌ Error: Failed to create {new_path}\n"
+                continue
+            
+            file_size = os.path.getsize(new_path)
+            print(f"[DEBUG] Step 2 - File verified, size: {file_size} bytes")
+            
+            files_generated += 1
+            yield f"   ✅ Generated {len(file_content)} characters → {new_path}\n"
+        except Exception as e:
+            print(f"[DEBUG] Step 2 - Exception writing file: {e}")
+            yield f"   ❌ Error writing {new_path}: {e}\n"
+            continue
     
-    yield f"\n✅ Total: {total_changes} changes applied across {files_changed} file(s)\n"
+    yield f"\n✅ Generated {files_generated} new file version(s)\n"
+    print(f"[DEBUG] Step 2 - Summary: Generated {files_generated} files")
+    
+    # =========================================================================
+    # STEP 3: Create git diffs
+    # =========================================================================
+    yield "\n🔍 Step 3: Creating git diffs...\n"
+    
+    patch_file = os.path.join(workspace, f"{ticket_id}.patch")
+    patches_created = []
+    
+    # Create a diffs directory for individual file diffs
+    diffs_dir = os.path.join(workspace, ".diffs")
+    os.makedirs(diffs_dir, exist_ok=True)
+    print(f"[DEBUG] Step 3 - Diffs directory: {diffs_dir}")
+    
+    yield f"   Looking for {len(files_to_modify)} file(s) to create diffs for...\n"
+    print(f"[DEBUG] Step 3 - Files to process: {files_to_modify}")
+    
+    for file_path in files_to_modify:
+        full_path = os.path.join(workspace, file_path)
+        new_path = full_path + ".new"
+        
+        print(f"[DEBUG] Step 3 - Checking file: {file_path}")
+        print(f"[DEBUG] Step 3 - Looking for: {new_path}")
+        print(f"[DEBUG] Step 3 - File exists: {os.path.exists(new_path)}")
+        
+        # Verify .new file exists before creating diff
+        if not os.path.exists(new_path):
+            print(f"[DEBUG] Step 3 - WARNING: .new file not found!")
+            yield f"   ⚠️  Warning: {new_path} not found, skipping diff\n"
+            # Debug: check if the directory exists
+            parent_dir = os.path.dirname(new_path)
+            if os.path.exists(parent_dir):
+                yield f"      (Directory exists, but .new file is missing)\n"
+                # List files in directory
+                try:
+                    files_in_dir = os.listdir(parent_dir)
+                    print(f"[DEBUG] Step 3 - Files in {parent_dir}: {files_in_dir}")
+                    yield f"      (Files in directory: {', '.join(files_in_dir[:5])})\n"
+                except Exception as e:
+                    print(f"[DEBUG] Step 3 - Error listing directory: {e}")
+            else:
+                yield f"      (Directory doesn't exist: {parent_dir})\n"
+                print(f"[DEBUG] Step 3 - Parent directory doesn't exist")
+            continue
+        
+        # Create diff using git diff
+        # Use absolute paths to avoid path resolution issues
+        abs_full_path = os.path.abspath(full_path)
+        abs_new_path = os.path.abspath(new_path)
+        
+        if os.path.exists(full_path):
+            # Existing file - create diff
+            print(f"[DEBUG] Step 3 - Creating diff for existing file: {file_path}")
+            print(f"[DEBUG] Step 3 - Using absolute paths: {abs_full_path} vs {abs_new_path}")
+            diff_result = subprocess.run(
+                ["git", "diff", "--no-index", abs_full_path, abs_new_path],
+                cwd=workspace,
+                capture_output=True,
+                text=True
+            )
+            print(f"[DEBUG] Step 3 - git diff return code: {diff_result.returncode}")
+            print(f"[DEBUG] Step 3 - stdout length: {len(diff_result.stdout)}")
+            print(f"[DEBUG] Step 3 - stderr length: {len(diff_result.stderr)}")
+            
+            # git diff --no-index returns 1 when files differ (this is normal)
+            # Check for errors in stderr if stdout is empty
+            if diff_result.stderr and not diff_result.stdout:
+                print(f"[DEBUG] Step 3 - ERROR in git diff: {diff_result.stderr}")
+                yield f"   ❌ Error creating diff for {file_path}: {diff_result.stderr}\n"
+            elif diff_result.stdout:
+                # Fix the diff paths to use relative paths without .new extension
+                diff_output = diff_result.stdout
+                lines = diff_output.split('\n')
+                fixed_lines = []
+                for line in lines:
+                    if line.startswith('diff --git'):
+                        # Normalize header to use relative paths without .new
+                        fixed_lines.append(f"diff --git a/{file_path} b/{file_path}")
+                    elif line.startswith('---'):
+                        # Original file: use relative path
+                        fixed_lines.append(f"--- a/{file_path}")
+                    elif line.startswith('+++'):
+                        # Modified file: use relative path (without .new)
+                        fixed_lines.append(f"+++ b/{file_path}")
+                    else:
+                        fixed_lines.append(line)
+                fixed_diff = '\n'.join(fixed_lines)
+                
+                patches_created.append(fixed_diff)
+                # Save individual file diff for tracking
+                safe_filename = file_path.replace("/", "_").replace("\\", "_")
+                individual_diff_file = os.path.join(diffs_dir, f"{safe_filename}.diff")
+                with open(individual_diff_file, "w") as f:
+                    f.write(fixed_diff)
+                print(f"[DEBUG] Step 3 - Saved diff to {individual_diff_file}")
+                yield f"   ✅ Created diff for {file_path}\n"
+            else:
+                print(f"[DEBUG] Step 3 - No diff output (files might be identical)")
+        else:
+            # New file - create diff showing entire file as added
+            # Use os.devnull for cross-platform compatibility
+            print(f"[DEBUG] Step 3 - Creating diff for NEW file: {file_path}")
+            print(f"[DEBUG] Step 3 - Using absolute path: {abs_new_path}")
+            diff_result = subprocess.run(
+                ["git", "diff", "--no-index", "--src-prefix=a/", "--dst-prefix=b/", os.devnull, abs_new_path],
+                cwd=workspace,
+                capture_output=True,
+                text=True
+            )
+            print(f"[DEBUG] Step 3 - git diff return code: {diff_result.returncode}")
+            print(f"[DEBUG] Step 3 - stdout length: {len(diff_result.stdout)}")
+            print(f"[DEBUG] Step 3 - stderr length: {len(diff_result.stderr)}")
+            
+            # git diff --no-index returns 1 for new files (this is normal)
+            # Check for errors in stderr if stdout is empty
+            if diff_result.stderr and not diff_result.stdout:
+                print(f"[DEBUG] Step 3 - ERROR in git diff: {diff_result.stderr}")
+                yield f"   ❌ Error creating diff for new file {file_path}: {diff_result.stderr}\n"
+            elif diff_result.stdout:
+                # Fix the diff to use the correct file path in the +++ line
+                # Replace the full path with just the relative file path
+                diff_output = diff_result.stdout
+                # Replace absolute paths and .new suffixes with the relative file_path
+                lines = diff_output.split('\n')
+                fixed_lines = []
+                for line in lines:
+                    if line.startswith('diff --git'):
+                        # Normalize header to use relative paths without .new
+                        fixed_lines.append(f"diff --git a/{file_path} b/{file_path}")
+                    elif line.startswith('+++') and new_path in line:
+                        # Modified file: use relative path (without .new)
+                        fixed_lines.append(f"+++ b/{file_path}")
+                    else:
+                        fixed_lines.append(line)
+                fixed_diff = '\n'.join(fixed_lines)
+                
+                patches_created.append(fixed_diff)
+                # Save individual file diff for tracking
+                safe_filename = file_path.replace("/", "_").replace("\\", "_")
+                individual_diff_file = os.path.join(diffs_dir, f"{safe_filename}.diff")
+                with open(individual_diff_file, "w") as f:
+                    f.write(fixed_diff)
+                print(f"[DEBUG] Step 3 - Saved new file diff to {individual_diff_file}")
+                yield f"   ✅ Created diff for new file {file_path}\n"
+            else:
+                print(f"[DEBUG] Step 3 - No diff output for new file")
+    
+    # Always save combined patch file (even if empty) for tracking
+    print(f"[DEBUG] Step 3 - Total patches created: {len(patches_created)}")
+    with open(patch_file, "w") as f:
+        if patches_created:
+            combined_patch = "\n".join(patches_created)
+            f.write(combined_patch)
+            print(f"[DEBUG] Step 3 - Wrote {len(combined_patch)} characters to {patch_file}")
+        else:
+            f.write("# No changes detected\n")
+            print(f"[DEBUG] Step 3 - No patches to write, wrote placeholder")
+    yield f"\n✅ Saved combined patch to {ticket_id}.patch\n"
+    if patches_created:
+        yield f"✅ Saved {len(patches_created)} individual diff(s) to .diffs/\n"
+    
+    # =========================================================================
+    # STEP 4: Apply changes by moving .new files into place
+    # =========================================================================
+    yield "\n🔧 Step 4: Applying file changes...\n"
+    
+    applied_count = _apply_new_files_directly(workspace, files_to_modify)
+    yield f"✅ Applied {applied_count} file(s) from .new versions\n"
+    
+    yield f"\n✅ Modified {len(files_to_modify)} file(s)\n"
 
+    # =========================================================================
+    # STEP 5: Git commit and push
+    # =========================================================================
+    yield "\n📦 Step 5: Committing changes...\n"
+    
     # Check if gh CLI is available
     gh_check = subprocess.run(
         ["which", "gh"],
@@ -446,11 +743,13 @@ def gemini_dev(ticket_id: str) -> Generator[str, None, None]:
         yield "For now, changes have been applied locally. You can manually commit and push.\n"
         return
 
-    # Stage all changes (excluding the changes JSON file)
+    # Stage all changes (excluding .new files and patch file)
     subprocess.run(["git", "add", "."], cwd=workspace)
     
-    # Remove the changes JSON from staging
-    subprocess.run(["git", "reset", "HEAD", changes_filename], cwd=workspace)
+    # Remove temporary files from staging
+    patch_file = f"{ticket_id}.patch"
+    subprocess.run(["git", "reset", "HEAD", patch_file], cwd=workspace, capture_output=True)
+    subprocess.run(["git", "reset", "HEAD", ".diffs/"], cwd=workspace, capture_output=True)
     
     commit_result = subprocess.run(
         ["git", "commit", "-m", f"AI-generated implementation for {ticket_id}"],

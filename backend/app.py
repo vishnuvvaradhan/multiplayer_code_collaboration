@@ -136,8 +136,8 @@ def handle_command(cmd: CommandRequest):
     if workspace is None:
 
         def err_stream():
-            yield f"data: Workspace for ticket '{ticket_id}' does not exist. Call /create_ticket.\n\n"
-            yield "data: __END__\n\n"
+            yield f" Workspace for ticket '{ticket_id}' does not exist. Call /create_ticket.\n\n"
+            yield "\n\n"
 
         return EventSourceResponse(err_stream())
 
@@ -157,14 +157,14 @@ def handle_command(cmd: CommandRequest):
 
     else:
         def err_stream():
-            yield f"data: Unknown action '{action}'\n\n"
-            yield "data: __END__\n\n"
+            yield f"Unknown action '{action}'\n\n"
+            yield "\n\n"
         return EventSourceResponse(err_stream())
 
     # --- Wrap generator output into valid SSE stream ---
     def event_stream():
         for line in generator:
-            yield f"data: {line.strip()}\n\n"
-        yield "data: __END__\n\n"
+            yield f"{line.strip()}\n\n"
+        yield "\n\n"
 
     return EventSourceResponse(event_stream())

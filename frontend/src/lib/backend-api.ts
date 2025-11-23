@@ -138,12 +138,6 @@ export async function* executeCommand(
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const data = line.slice(6); // Remove 'data: ' prefix
-          
-          // Check for end marker
-          if (data === '__END__') {
-            return;
-          }
-          
           yield data;
         }
       }
