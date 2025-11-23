@@ -565,9 +565,9 @@ function SettingsTab({ ticket, loading, onDelete }: SettingsTabProps) {
         </div>
       </div>
 
-      {/* Danger Zone */}
+      {/* Delete */}
       <div className="bg-white border border-red-200 rounded-md p-4 shadow-sm">
-        <h3 className="text-gray-900 font-semibold mb-2">Danger Zone</h3>
+        <h3 className="text-gray-900 font-semibold mb-2">Delete</h3>
         <p className="text-xs text-gray-600 mb-4">
           Deleting this ticket will permanently remove it and all associated messages. This action cannot be undone.
         </p>

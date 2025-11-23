@@ -508,17 +508,19 @@ Do NOT make any code changes - just provide guidance.`;
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-white h-full">
+    <div className="flex-1 flex flex-col bg-gray-50 h-full">
       {/* Header */}
-      <div className="h-14 border-b border-gray-300 flex items-center justify-between px-4 bg-white shadow-sm">
-        <div className="flex items-center gap-2 relative ticket-dropdown-container">
-          <Hash className="w-5 h-5 text-gray-600" />
-          <h1 className="text-gray-900">{ticketName || ticketId}</h1>
+      <div className="h-16 border-b border-gray-200/80 flex items-center justify-between px-6 bg-white/80 backdrop-blur-sm shadow-sm">
+        <div className="flex items-center gap-3 relative ticket-dropdown-container">
+          <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+            <Hash className="w-4 h-4 text-gray-600" />
+          </div>
+          <h1 className="text-gray-900 font-semibold text-base">{ticketName || ticketId}</h1>
           <button
             onClick={() => setIsTicketDropdownOpen(!isTicketDropdownOpen)}
-            className="p-1 hover:bg-gray-100 rounded transition-colors"
+            className="p-1.5 hover:bg-gray-100 rounded-lg transition-all duration-200 hover:scale-105"
           >
-            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isTicketDropdownOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isTicketDropdownOpen ? 'rotate-180' : ''}`} />
           </button>
           
           {/* Ticket Dropdown */}
@@ -604,10 +606,10 @@ Do NOT make any code changes - just provide guidance.`;
       {/* Messages */}
       <div 
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto flex flex-col"
+        className="flex-1 overflow-y-auto flex flex-col bg-gray-50"
         style={{ scrollBehavior: 'smooth' }}
       >
-        <div className="max-w-none flex flex-col min-h-full">
+        <div className="max-w-4xl mx-auto w-full flex flex-col min-h-full px-4 py-6">
           {/* Spacer to push content to bottom when content is short */}
           {shouldJustifyEnd && <div className="flex-1 min-h-0" />}
           {/* Messages list */}
@@ -671,11 +673,19 @@ Do NOT make any code changes - just provide guidance.`;
             }
 
                     if (message.message_type === 'agent') {
+              // Determine agent type from metadata or author name
+              let agentType: 'architect' | 'dev' = 'dev';
+              if (message.metadata?.agent === 'architect') {
+                agentType = 'architect';
+              } else if (message.user_or_agent.toLowerCase().includes('architect')) {
+                agentType = 'architect';
+              }
+              
               return (
                 <AgentMessage
                           key={message.id}
                   content={message.content || ''}
-                          agent={message.metadata?.agent || 'dev'}
+                          agent={agentType}
                           author={message.user_or_agent}
                           timestamp={formattedTimestamp}
                           metadata={message.metadata || undefined}
@@ -777,13 +787,7 @@ Do NOT make any code changes - just provide guidance.`;
 
       {/* AI Prompt Box */}
       <div 
-        className="pt-2"
-        style={{
-          background: 'linear-gradient(to top, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.6) 100%)',
-          backdropFilter: 'blur(20px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-          borderTop: '1px solid rgba(0, 0, 0, 0.05)',
-        }}
+        className="pt-4 pb-4 border-t border-gray-200/80 bg-white/80 backdrop-blur-xl"
       >
         <AIPromptBox
           value={inputValue}

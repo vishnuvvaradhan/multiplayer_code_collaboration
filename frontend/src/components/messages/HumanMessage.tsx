@@ -38,23 +38,25 @@ export function HumanMessage({ content, author, avatar, timestamp, showAvatar = 
   }
   
   return (
-    <div className={`px-4 hover:bg-gray-50 group transition-colors ${showAvatar ? 'py-3 border-t border-gray-100' : 'py-1'}`}>
-      <div className="flex gap-3">
+    <div className={`group transition-all duration-200 ${showAvatar ? 'py-4' : 'py-2'}`}>
+      <div className="flex gap-4">
         {showAvatar ? (
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${userColor.bg} ${userColor.text} border border-gray-200 shadow-sm`}>
-            <span className="text-sm font-medium">{avatar}</span>
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${userColor.bg} ${userColor.text} shadow-sm ring-1 ring-gray-200/50`}>
+            <span className="text-xs font-semibold">{avatar}</span>
           </div>
         ) : (
-          <div className="w-10 flex-shrink-0" />
+          <div className="w-8 flex-shrink-0" />
         )}
         <div className="flex-1 min-w-0">
           {showAvatar && (
-            <div className="flex items-baseline gap-2 mb-1">
-              <span className="text-sm text-gray-900 font-medium">{author}</span>
-              <span className="text-xs text-gray-500">{timestamp}</span>
+            <div className="flex items-baseline gap-2.5 mb-2">
+              <span className="text-sm text-gray-900 font-semibold">{author}</span>
+              <span className="text-xs text-gray-400">{timestamp}</span>
             </div>
           )}
-          <p className={`text-sm text-gray-800 leading-[1.5] ${showAvatar ? '' : 'ml-0'}`}>{displayContent}</p>
+          <div className="prose prose-sm max-w-none">
+            <p className={`text-[15px] text-gray-800 leading-7 ${showAvatar ? '' : 'ml-0'}`}>{displayContent}</p>
+          </div>
         </div>
       </div>
     </div>

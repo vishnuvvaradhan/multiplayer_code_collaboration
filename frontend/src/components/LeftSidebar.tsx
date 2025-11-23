@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { Plus, Hash, ChevronDown, Loader2, MoreVertical, Bell } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, ChevronDown, Loader2, MoreVertical, Bell } from 'lucide-react';
 import { TicketSelectionDialog } from './TicketSelectionDialog';
 import { LinearIssue, LinearUser } from '../lib/linear';
 import { getAllTickets, getMessagesByTicketId, getUserColor, getUserInitials } from '../lib/database';
@@ -27,6 +27,9 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
   const [loading, setLoading] = useState(true);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [isTicketsCollapsed, setIsTicketsCollapsed] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [hoveredTicketId, setHoveredTicketId] = useState<string | null>(null);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch tickets from Supabase
   useEffect(() => {
@@ -58,6 +61,15 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
     fetchTickets();
   }, [refreshTrigger]);
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleTicketSelected = (
     ticket: LinearIssue, 
     selectedUsers: LinearUser[], 
@@ -88,9 +100,9 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
   return (
     <div className="w-64 border-r border-amber-800/20 flex flex-col h-full shadow-lg" style={{ backgroundColor: '#F5F1EB' }}>
       {/* Header */}
-      <div className="p-4 border-b border-amber-800/20" style={{ backgroundColor: '#F5F1EB' }}>
-        <div className="flex items-center justify-center h-16">
-          <span className="text-3xl font-bold tracking-tight" style={{ color: '#5D4037' }}>CodeRoom</span>
+      <div className="p-5 border-b border-amber-800/20" style={{ backgroundColor: '#F5F1EB' }}>
+        <div className="flex items-center justify-center h-18">
+          <span className="text-4xl font-bold tracking-tight" style={{ color: '#F97316' }}>CodeRoom</span>
         </div>
       </div>
 
@@ -132,47 +144,126 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
             </div>
           ) : (
             <div className="space-y-1">
-              {tickets.map((ticket) => {
+              {tickets.map((ticket, index) => {
                 const isSelected = ticket.ticket_identifier === selectedTicket;
                 const messageCount = unreadCounts[ticket.ticket_identifier];
+                const isHovered = hoveredTicketId === ticket.id;
+                const isDragging = draggedIndex === index;
+
+                const handleDragStart = (e: React.DragEvent) => {
+                  setDraggedIndex(index);
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/html', index.toString());
+                  (e.target as HTMLElement).style.opacity = '0.5';
+                };
+
+                const handleDragEnd = (e: React.DragEvent) => {
+                  (e.target as HTMLElement).style.opacity = '1';
+                  setDraggedIndex(null);
+                };
+
+                const handleDragOver = (e: React.DragEvent) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                };
+
+                const handleDrop = (e: React.DragEvent) => {
+                  e.preventDefault();
+                  const draggedTicketIndex = parseInt(e.dataTransfer.getData('text/html'));
+                  
+                  if (draggedTicketIndex !== index && draggedTicketIndex !== null) {
+                    const newTickets = [...tickets];
+                    const [draggedTicket] = newTickets.splice(draggedTicketIndex, 1);
+                    newTickets.splice(index, 0, draggedTicket);
+                    setTickets(newTickets);
+                  }
+                  setDraggedIndex(null);
+                };
 
                 return (
-                  <button
+                  <div
                     key={ticket.id}
-                    onClick={() => {
-                      onSelectTicket(ticket.ticket_identifier);
-                      // Clear unread count when ticket is selected
-                      setUnreadCounts(prev => {
-                        const newCounts = { ...prev };
-                        delete newCounts[ticket.ticket_identifier];
-                        return newCounts;
-                      });
-                    }}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm group relative ${
-                      isSelected
-                        ? 'shadow-md bg-white'
-                        : 'bg-transparent hover:bg-amber-900/10'
-                    }`}
-                    style={{
-                      transform: isSelected ? 'scale(1.02)' : 'scale(1)',
-                      color: '#5D4037',
-                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                      boxShadow: isSelected ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : 'none',
-                      border: isSelected ? 'none' : '1px solid transparent',
-                    }}
+                    draggable
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                    className={`cursor-move ${isDragging ? 'opacity-50' : ''}`}
                   >
-                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                      <Hash className="w-4 h-4 shrink-0 transition-colors duration-200" style={{ color: isSelected ? '#5D4037' : '#8B6F47' }} />
-                      <span className="truncate font-medium" style={{ color: isSelected ? '#5D4037' : '#5D4037' }}>
-                        {ticket.ticket_name.toLowerCase().replace(/\s+/g, '-')}
-                      </span>
-                    </div>
-                    {messageCount && !isSelected && (
-                      <span className="px-2 py-0.5 bg-amber-800 text-white rounded-full text-xs font-bold min-w-[20px] text-center shadow-sm">
-                        {messageCount}
-                      </span>
-                    )}
-                  </button>
+                    <button
+                      onClick={() => {
+                        onSelectTicket(ticket.ticket_identifier);
+                        // Clear unread count when ticket is selected
+                        setUnreadCounts(prev => {
+                          const newCounts = { ...prev };
+                          delete newCounts[ticket.ticket_identifier];
+                          return newCounts;
+                        });
+                      }}
+                      onMouseEnter={() => {
+                        // Clear any existing timeout
+                        if (hoverTimeoutRef.current) {
+                          clearTimeout(hoverTimeoutRef.current);
+                        }
+                        // Set timeout for 2.25 seconds
+                        hoverTimeoutRef.current = setTimeout(() => {
+                          setHoveredTicketId(ticket.id);
+                        }, 2250);
+                      }}
+                      onMouseLeave={() => {
+                        // Clear timeout if user leaves before 2.25 seconds
+                        if (hoverTimeoutRef.current) {
+                          clearTimeout(hoverTimeoutRef.current);
+                          hoverTimeoutRef.current = null;
+                        }
+                        setHoveredTicketId(null);
+                      }}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm relative ${
+                        isSelected
+                          ? 'shadow-md bg-white'
+                          : 'bg-transparent hover:bg-amber-900/10'
+                      }`}
+                      style={{
+                        transform: isSelected ? 'scale(1.02)' : 'scale(1)',
+                        color: '#5D4037',
+                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                        boxShadow: isSelected ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : 'none',
+                        border: isSelected ? 'none' : '1px solid transparent',
+                        minHeight: '40px',
+                      }}
+                    >
+                      <div className="flex items-center gap-2.5 flex-1 min-w-0 relative">
+                        <span 
+                          className="font-medium truncate block"
+                          style={{ 
+                            color: isSelected ? '#5D4037' : '#5D4037',
+                          }}
+                        >
+                          {ticket.ticket_name.toLowerCase().replace(/\s+/g, '-')}
+                        </span>
+                        {/* Expanded full name tooltip on hover */}
+                        {isHovered && (
+                          <div 
+                            className="absolute left-0 bottom-full mb-2 whitespace-nowrap bg-gray-900 text-white px-3 py-2 rounded-lg shadow-2xl z-50 animate-in fade-in-0 zoom-in-95 duration-200"
+                            style={{
+                              maxWidth: '400px',
+                            }}
+                          >
+                            <span className="font-medium text-sm">
+                              {ticket.ticket_name}
+                            </span>
+                            {/* Tooltip arrow */}
+                            <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                          </div>
+                        )}
+                      </div>
+                      {messageCount && !isSelected && (
+                        <span className="px-2 py-0.5 bg-amber-800 text-white rounded-full text-xs font-bold min-w-[20px] text-center shadow-sm shrink-0">
+                          {messageCount}
+                        </span>
+                      )}
+                    </button>
+                  </div>
                 );
               })}
             </div>
