@@ -108,9 +108,19 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
             />
           </button>
           
-          {!isTicketsCollapsed && (
-            <>
-              {loading ? (
+          <div 
+            className={`overflow-hidden transition-all duration-300 ${
+              isTicketsCollapsed 
+                ? 'max-h-0 opacity-0' 
+                : 'max-h-[1000px] opacity-100'
+            }`}
+            style={{
+              transition: 'max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease-in-out',
+            }}
+          >
+            {!isTicketsCollapsed && (
+              <>
+                {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-5 h-5 animate-spin" style={{ color: '#8B6F47' }} />
             </div>
@@ -137,36 +147,17 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
                         return newCounts;
                       });
                     }}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all duration-300 ease-in-out group relative ${
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm group relative ${
                       isSelected
-                        ? 'shadow-md'
-                        : ''
+                        ? 'shadow-md bg-white'
+                        : 'bg-transparent hover:bg-amber-900/10'
                     }`}
                     style={{
                       transform: isSelected ? 'scale(1.02)' : 'scale(1)',
-                      color: isSelected ? '#5D4037' : '#5D4037',
-                      backgroundColor: isSelected ? '#FFFFFF' : 'transparent',
+                      color: '#5D4037',
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                       boxShadow: isSelected ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : 'none',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.transform = 'scale(1.01)';
-                        e.currentTarget.style.backgroundColor = 'rgba(217, 119, 6, 0.1)';
-                        e.currentTarget.style.boxShadow = '0 0 20px rgba(217, 119, 6, 0.4), 0 0 40px rgba(217, 119, 6, 0.2), 0 0 60px rgba(217, 119, 6, 0.1)';
-                        e.currentTarget.style.border = '1px solid rgba(217, 119, 6, 0.5)';
-                        const hashIcon = e.currentTarget.querySelector('svg');
-                        if (hashIcon) hashIcon.style.color = '#5D4037';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.transform = 'scale(1)';
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.boxShadow = 'none';
-                        e.currentTarget.style.border = 'none';
-                        const hashIcon = e.currentTarget.querySelector('svg');
-                        if (hashIcon) hashIcon.style.color = '#8B6F47';
-                      }
+                      border: isSelected ? 'none' : '1px solid transparent',
                     }}
                   >
                     <div className="flex items-center gap-2.5 flex-1 min-w-0">
@@ -185,14 +176,15 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
               })}
             </div>
           )}
-            </>
-          )}
+              </>
+            )}
+          </div>
         </div>
 
         {/* Create button */}
         <button
           onClick={() => setIsDialogOpen(true)}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-all duration-300 font-medium text-white relative overflow-hidden shimmer-effect"
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md font-medium text-white relative overflow-hidden shimmer-effect"
           style={{ 
             transform: 'scale(1)',
             backgroundColor: '#D97706',
@@ -200,16 +192,15 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
             borderWidth: '1px',
             borderStyle: 'solid',
             boxShadow: '0 0 0 rgba(217, 119, 6, 0)',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.transform = 'scale(1.02)';
             e.currentTarget.style.backgroundColor = '#B45309';
-            e.currentTarget.style.boxShadow = '0 0 20px rgba(217, 119, 6, 0.8), 0 0 40px rgba(217, 119, 6, 0.6), 0 0 60px rgba(217, 119, 6, 0.4)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.transform = 'scale(1)';
             e.currentTarget.style.backgroundColor = '#D97706';
-            e.currentTarget.style.boxShadow = '0 0 0 rgba(217, 119, 6, 0)';
           }}
         >
           <Plus className="w-4 h-4 shrink-0 relative z-10" style={{ position: 'absolute', left: '12px' }} />

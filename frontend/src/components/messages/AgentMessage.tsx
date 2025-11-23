@@ -5,9 +5,12 @@ interface AgentMessageProps {
   agent: 'architect' | 'dev';
   author: string;
   timestamp: string;
+  metadata?: {
+    agent?: string;
+  };
 }
 
-export function AgentMessage({ content, agent, author, timestamp }: AgentMessageProps) {
+export function AgentMessage({ content, agent, author, timestamp, metadata }: AgentMessageProps) {
   const isArchitect = agent === 'architect';
   
   return (
