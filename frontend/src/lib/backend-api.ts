@@ -1,5 +1,6 @@
 // Backend API client for FastAPI integration
-import { getTicketByIdentifier, getMessagesByTicketId, Ticket, Message } from './database';
+import { getTicketByIdentifier, getMessagesByTicketId } from './database';
+import { Ticket, Message } from './supabase';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 

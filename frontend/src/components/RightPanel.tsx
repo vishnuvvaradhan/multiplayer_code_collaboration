@@ -1,17 +1,12 @@
 import { useState, useEffect } from 'react';
-import { X, Check, FileCode, GitPullRequest, Clock, Settings, Hash, Users, Github, Calendar, Tag } from 'lucide-react';
+import { X, Check, FileCode, GitPullRequest, Clock, Settings, Hash, Users, Github, Calendar, Tag, Loader2, FileText } from 'lucide-react';
 import { DiffView } from './DiffView';
 import { PRView } from './PRView';
-import { getUserColor, getUserInitials, getTicketByIdentifier, deleteTicket, getAllTickets } from '@/lib/database';
+import { getUserColor, getUserInitials, getTicketByIdentifier, deleteTicket, getAllTickets, getMessagesByTicketId, createMessage } from '@/lib/database';
 import { Ticket } from '@/lib/supabase';
 import { HoldToDeleteButton } from './HoldToDeleteButton';
 import { toast } from 'sonner';
-import { X, Check, FileCode, GitPullRequest, Clock, Loader2, FileText } from 'lucide-react';
-import { DiffView } from './DiffView';
-import { PRView } from './PRView';
-import { getUserColor, getUserInitials, getMessagesByTicketId, createMessage, getTicketByIdentifier } from '@/lib/database';
 import { executeCommand, getTicketContext } from '@/lib/backend-api';
-import { toast } from 'sonner';
 import { Button } from './ui/button';
 
 interface RightPanelProps {
@@ -144,10 +139,6 @@ export function RightPanel({ ticketId, onClose, onTicketDeleted }: RightPanelPro
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#F5F1EB' }}>
-        {activeTab === 'plan' && <PlanTab />}
-        {activeTab === 'changes' && <DiffView />}
-        {activeTab === 'pr' && <PRView />}
-        {activeTab === 'settings' && <SettingsTab ticket={ticket} loading={loading} onDelete={handleDelete} />}
         {activeTab === 'plan' && (
           <PlanTab 
             ticketId={ticketId}
@@ -186,7 +177,7 @@ export function RightPanel({ ticketId, onClose, onTicketDeleted }: RightPanelPro
                   message_type: 'agent',
                   content: fullPlan,
                   metadata: {
-                    agent: 'plan',
+                    agent: 'architect',
                   },
                 });
                 
@@ -286,6 +277,7 @@ export function RightPanel({ ticketId, onClose, onTicketDeleted }: RightPanelPro
             }}
           />
         )}
+        {activeTab === 'settings' && <SettingsTab ticket={ticket} loading={loading} onDelete={handleDelete} />}
       </div>
     </div>
   );
@@ -406,7 +398,7 @@ function PlanTab({ ticketId, ticketDbId, planExists, generating, onGeneratePlan 
               return (
                 <div className={`w-9 h-9 rounded-full ${approverColor.bg} ${approverColor.text} flex items-center justify-center border border-gray-300 shadow-sm`}>
                   <span className="text-sm font-medium">{getUserInitials(approverName)}</span>
-                </div>
+            </div>
               );
             })()}
             <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-600 rounded-full border-2 border-white flex items-center justify-center">
@@ -427,7 +419,7 @@ function PlanTab({ ticketId, ticketDbId, planExists, generating, onGeneratePlan 
               return (
                 <div className={`w-9 h-9 rounded-full ${pendingColor.bg} ${pendingColor.text} flex items-center justify-center border border-gray-300 shadow-sm`}>
                   <span className="text-sm font-medium">{getUserInitials(pendingName)}</span>
-                </div>
+            </div>
               );
             })()}
             <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-gray-300 rounded-full border-2 border-white flex items-center justify-center">
