@@ -174,6 +174,7 @@ export function RightPanel({ ticketId, onClose, onTicketDeleted }: RightPanelPro
             prExists={prExists}
             generating={generating}
             prLink={prLink}
+            repoUrl={ticket?.github_url || null}
             onGeneratePR={async () => {
               if (!ticketDbId) {
                 toast.error('Ticket not found');
