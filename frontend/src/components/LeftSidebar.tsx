@@ -18,9 +18,10 @@ interface LeftSidebarProps {
   selectedTicket: string;
   onSelectTicket: (id: string) => void;
   onRepositorySelected?: (repository: { fullName: string; url: string; name: string }) => void;
+  refreshTrigger?: number;
 }
 
-export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelected }: LeftSidebarProps) {
+export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelected, refreshTrigger }: LeftSidebarProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +56,7 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
     }
 
     fetchTickets();
-  }, []);
+  }, [refreshTrigger]);
 
   const handleTicketSelected = (
     ticket: LinearIssue, 
