@@ -99,21 +99,11 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
 
     // Check if message contains a command
     const content = message.content?.trim() || '';
-    
-    // Detect command type
-    let commandType: 'chat' | 'make_plan' | 'dev' | null = null;
-    let commandMessage = '';
-    
-    if (content.startsWith('@chat')) {
-      commandType = 'chat';
-      commandMessage = content.slice(5).trim();
-    } else if (content.startsWith('@make_plan')) {
-      commandType = 'make_plan';
-      commandMessage = content.slice(10).trim();
-    } else if (content.startsWith('@dev')) {
-      commandType = 'dev';
-      commandMessage = content.slice(4).trim();
-    }
+
+    // Detect command anywhere in the message
+    const commandInfo = detectCommand(content);
+    const commandType = commandInfo.type;
+    const commandMessage = commandInfo.message;
 
     if (!commandType) {
       return; // No command detected
@@ -200,16 +190,41 @@ Do NOT make any code changes - just provide guidance.`;
           fullResponse += chunk;
         }
 
-        // Save the final response
-        await createMessage({
-          ticket_id: ticketDbId,
-          user_or_agent: agentName,
-          message_type: 'agent',
-          content: fullResponse || 'No response received.',
-          metadata: {
-            agent: agentType,
-          },
-        });
+        // Clean up the response by removing any remaining SSE formatting artifacts
+        let cleanResponse = fullResponse
+          .split('\n')
+          .map(line => {
+            // Remove "data:" prefix if it exists at the start of the line
+            let cleaned = line.trim();
+            if (cleaned.startsWith('data:')) {
+              cleaned = cleaned.substring(5).trim();
+            }
+            return cleaned;
+          })
+          .filter(line => line && line !== '__END__' && line !== 'END') // Remove empty lines and markers
+          .join('\n')
+          .trim();
+
+        // For plan responses, also handle special architect-plan message type
+        if (commandType === 'make_plan') {
+          await createMessage({
+            ticket_id: ticketDbId,
+            user_or_agent: 'Architect',
+            message_type: 'architect-plan',
+            content: cleanResponse,
+          });
+        } else {
+          // Save the final response for chat/dev
+          await createMessage({
+            ticket_id: ticketDbId,
+            user_or_agent: agentName,
+            message_type: 'agent',
+            content: cleanResponse || 'No response received.',
+            metadata: {
+              agent: commandType === 'dev' ? 'dev' : undefined,
+            },
+          });
+        }
 
         console.log(`✅ @${commandType} command processed successfully`);
         toast.success(`@${commandType} command completed`);
@@ -393,6 +408,33 @@ Do NOT make any code changes - just provide guidance.`;
     }
   }, [error]);
 
+  // Helper function to detect commands anywhere in the message
+  const detectCommand = (content: string): { type: 'chat' | 'make_plan' | 'dev' | null; message: string; fullCommand: string } => {
+    // Look for @commands anywhere in the message using regex
+    const chatMatch = content.match(/@chat\s+(.+)/);
+    const planMatch = content.match(/@make_plan\s+(.+)/);
+    const devMatch = content.match(/@dev\s+(.+)/);
+
+    if (chatMatch) {
+      return { type: 'chat', message: chatMatch[1].trim(), fullCommand: '@chat' };
+    } else if (planMatch) {
+      return { type: 'make_plan', message: planMatch[1].trim(), fullCommand: '@make_plan' };
+    } else if (devMatch) {
+      return { type: 'dev', message: devMatch[1].trim(), fullCommand: '@dev' };
+    }
+
+    // Also check for commands at the start (for backward compatibility)
+    if (content.startsWith('@chat')) {
+      return { type: 'chat', message: content.slice(5).trim(), fullCommand: '@chat' };
+    } else if (content.startsWith('@make_plan')) {
+      return { type: 'make_plan', message: content.slice(10).trim(), fullCommand: '@make_plan' };
+    } else if (content.startsWith('@dev')) {
+      return { type: 'dev', message: content.slice(4).trim(), fullCommand: '@dev' };
+    }
+
+    return { type: null, message: content, fullCommand: '' };
+  };
+
   const handleSend = async () => {
     if (!inputValue.trim() || !ticketDbId || sending) return;
 
@@ -401,9 +443,10 @@ Do NOT make any code changes - just provide guidance.`;
     setSending(true);
 
     try {
-      // Check if message starts with @chat
-      const isChatCommand = messageContent.startsWith('@chat');
-      
+      // Detect command anywhere in the message
+      const commandInfo = detectCommand(messageContent);
+      const isCommand = commandInfo.type !== null;
+
       // Save the user's message
       await createMessage({
         ticket_id: ticketDbId,
@@ -412,34 +455,39 @@ Do NOT make any code changes - just provide guidance.`;
         content: messageContent,
         metadata: {
           avatar: getUserInitials(currentUser),
-          isCommand: isChatCommand,
+          isCommand: isCommand,
         },
       });
 
       // Always scroll to bottom when user sends a message
       scrollToBottom(true);
 
-      // If it's a @chat command, process it
-      if (isChatCommand) {
-        // Extract the actual message (remove @chat prefix)
-        const chatMessage = messageContent.slice(5).trim(); // Remove '@chat'
-        
-        if (!chatMessage) {
+      // If it's a command, process it
+      if (isCommand) {
+        const { type: commandType, message: commandMessage } = commandInfo;
+
+        if (!commandMessage && commandType === 'chat') {
           toast.error('Please provide a message after @chat');
           return;
         }
 
         // Get ticket context
         const context = await getTicketContext(ticketId);
-        
-        // Create a specialized prompt for quick responses
-        const prompt = `${context}
+
+        // Create command-specific prompt
+        let prompt = '';
+        let agentName = 'AI Assistant';
+        let thinkingMessage = '💭 Thinking...';
+        let agent: 'architect' | 'dev' | undefined = undefined;
+
+        if (commandType === 'chat') {
+          prompt = `${context}
 
 ---
 
 # USER QUESTION
 
-${chatMessage}
+${commandMessage}
 
 ---
 
@@ -450,14 +498,31 @@ Provide a QUICK and SHORT response (2-3 sentences max) to answer the user's ques
 Be concise, actionable, and specific to the ticket context above.
 Do NOT make any code changes - just provide guidance.`;
 
+          agentName = 'AI Assistant';
+          thinkingMessage = '💭 Thinking...';
+        } else if (commandType === 'make_plan') {
+          prompt = commandMessage || 'Create a plan for this ticket';
+          agentName = 'Architect';
+          thinkingMessage = '🏗️ Creating plan...';
+          agent = 'architect';
+        } else if (commandType === 'dev') {
+          prompt = commandMessage || 'Implement the plan';
+          agentName = 'Developer';
+          thinkingMessage = '⚙️ Working on it...';
+          agent = 'dev';
+        }
+
         // Create a temporary "thinking" message
-        const thinkingMessage = await createMessage({
+        await createMessage({
           ticket_id: ticketDbId,
-          user_or_agent: 'AI Assistant',
+          user_or_agent: agentName,
           message_type: 'agent',
           content: 'Thinking...',
           metadata: {
             agent: 'dev',
+          content: thinkingMessage,
+          metadata: {
+            agent: agent,
             streaming: true,
           },
         });
@@ -465,34 +530,63 @@ Do NOT make any code changes - just provide guidance.`;
         // Stream the response
         let fullResponse = '';
         try {
-          for await (const chunk of executeCommand(ticketId, 'chat', prompt)) {
+          for await (const chunk of executeCommand(ticketId, commandType!, prompt)) {
             fullResponse += chunk;
-            
-            // Update the message in real-time (this will be picked up by polling)
-            // For now, we'll just collect and save at the end
           }
 
-          // Save the final response
-          await createMessage({
-            ticket_id: ticketDbId,
-            user_or_agent: 'AI Assistant',
-            message_type: 'agent',
-            content: fullResponse || 'No response received.',
-            metadata: {
-              agent: 'dev',
-            },
-          });
+          // Handle different response types
+          if (commandType === 'make_plan') {
+            // Save plan to database
+            await createMessage({
+              ticket_id: ticketDbId,
+              user_or_agent: 'Architect',
+              message_type: 'architect-plan',
+              content: fullResponse,
+              metadata: {
+                agent: 'architect',
+              },
+            });
+          } else if (commandType === 'dev') {
+            // Save dev response to database
+            await createMessage({
+              ticket_id: ticketDbId,
+              user_or_agent: 'Developer',
+              message_type: 'agent',
+              content: fullResponse || 'Implementation completed.',
+              metadata: {
+                agent: 'dev',
+              },
+            });
+          } else {
+            // Save chat response
+            await createMessage({
+              ticket_id: ticketDbId,
+              user_or_agent: 'AI Assistant',
+              message_type: 'agent',
+              content: fullResponse || 'No response received.',
+              metadata: {
+                agent: undefined,
+              },
+            });
+          }
 
-          toast.success('Response received');
+          if (commandType === 'chat') {
+            toast.success('Response received');
+          } else if (commandType === 'make_plan') {
+            toast.success('Plan generated successfully!');
+          } else if (commandType === 'dev') {
+            toast.success('Implementation completed!');
+          }
         } catch (error) {
-          console.error('Error streaming @chat response:', error);
+          console.error(`Error streaming @${commandType} response:`, error);
+          const errorMessage = `⚠️ Failed to process @${commandType} command: ${error instanceof Error ? error.message : 'Unknown error'}`;
           await createMessage({
             ticket_id: ticketDbId,
             user_or_agent: 'System',
             message_type: 'system',
-            content: `⚠️ Failed to get @chat response: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            content: errorMessage,
           });
-          toast.error('Failed to get response from AI');
+          toast.error(`Failed to process @${commandType} command`);
         }
       }
     } catch (error) {
@@ -694,7 +788,7 @@ Do NOT make any code changes - just provide guidance.`;
             }
 
                 if (message.message_type === 'architect-plan') {
-                  return <ArchitectPlanCard key={message.id} timestamp={formattedTimestamp} />;
+                  return <ArchitectPlanCard key={message.id} timestamp={formattedTimestamp} content={message.content || undefined} />;
             }
 
                 if (message.message_type === 'diff-generated') {
