@@ -46,9 +46,9 @@ export function HumanMessage({ content, author, avatar, timestamp, showAvatar = 
             </div>
           )}
           <div className="prose prose-sm max-w-none">
-            <p className={`text-[15px] text-gray-800 leading-7 ${showAvatar ? '' : 'ml-0'}`}>{displayContent}</p>
-          <div className={showAvatar ? '' : 'ml-0'}>
-            <MarkdownRenderer content={processedContent} />
+            <div className={showAvatar ? '' : 'ml-0'}>
+              <MarkdownRenderer content={processedContent} />
+            </div>
           </div>
         </div>
       </div>

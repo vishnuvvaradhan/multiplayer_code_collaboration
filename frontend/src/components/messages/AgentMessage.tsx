@@ -1,6 +1,5 @@
 import { Bot, Code, Sparkles } from 'lucide-react';
 import { TextShimmer } from '../TextShimmer';
-import { Bot, Code } from 'lucide-react';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 
 interface AgentMessageProps {
@@ -57,11 +56,10 @@ export function AgentMessage({ content, agent, author, timestamp, metadata }: Ag
                   <TextShimmer text={shimmerText} />
                 </p>
               ) : (
-                <p className="text-[15px] text-gray-800 leading-7 whitespace-pre-wrap">{content}</p>
+                <MarkdownRenderer content={content} />
               )}
             </div>
           </div>
-          <MarkdownRenderer content={content} />
         </div>
       </div>
     </div>

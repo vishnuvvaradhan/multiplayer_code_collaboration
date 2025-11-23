@@ -2,7 +2,7 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import 'highlight.js/styles/github.css'; // Import a highlight.js theme
+import 'highlight.js/styles/github.css';
 
 interface MarkdownRendererProps {
   content: string;
@@ -31,11 +31,11 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
           code: ({ node, inline, className, children, ...props }: any) => {
             const match = /language-(\w+)/.exec(className || '');
             return !inline && match ? (
-              <code className={`${className} block whitespace-pre-wrap`} {...props}>
+              <code className={`${className} block whitespace-pre-wrap bg-gray-900 text-gray-100`} {...props}>
                 {children}
               </code>
             ) : (
-              <code className={`${className} bg-gray-100 px-1 py-0.5 rounded text-sm font-mono`} {...props}>
+              <code className={`${className} bg-gray-100 px-1 py-0.5 rounded text-sm font-mono text-gray-800`} {...props}>
                 {children}
               </code>
             );
