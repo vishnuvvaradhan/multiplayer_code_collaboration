@@ -5,16 +5,15 @@ import { AgentMessage } from './messages/AgentMessage';
 import { SystemMessage } from './messages/SystemMessage';
 import { ArchitectPlanCard } from './messages/ArchitectPlanCard';
 import { DiffGeneratedCard } from './messages/DiffGeneratedCard';
-import { EmptyState } from './EmptyState';
 import { LoadingState } from './LoadingState';
 import { AIPromptBox } from './AIPromptBox';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMessages } from '@/hooks/useMessages';
-import { createMessage, formatTimestamp, getUserInitials, getUserColor } from '@/lib/database';
+import { createMessage, formatTimestamp, getUserInitials, getUserColor, deleteMessage } from '@/lib/database';
 import { getCurrentUserName, Message } from '@/lib/supabase';
 import { getTicketByIdentifier } from '@/lib/database';
 import { toast } from 'sonner';
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { Avatar, AvatarFallback } from './ui/avatar';
 import { executeCommand, getTicketContext } from '@/lib/backend-api';
 
 interface ChatPanelProps {
@@ -127,7 +126,7 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
       // Create command-specific prompt
       let prompt = '';
       let agentName = 'AI Assistant';
-      let thinkingMessage = '💭 Thinking...';
+      let thinkingMessage = 'Thinking...';
       
       if (commandType === 'chat') {
         if (!commandMessage) {
@@ -153,15 +152,15 @@ Be concise, actionable, and specific to the ticket context above.
 Do NOT make any code changes - just provide guidance.`;
         
         agentName = 'AI Assistant';
-        thinkingMessage = '💭 Thinking...';
+        thinkingMessage = 'Thinking...';
       } else if (commandType === 'make_plan') {
         prompt = commandMessage || 'Create a plan for this ticket';
         agentName = 'Architect';
-        thinkingMessage = '🏗️ Creating plan...';
+        thinkingMessage = 'Creating Plan...';
       } else if (commandType === 'dev') {
         prompt = commandMessage || 'Implement the plan';
         agentName = 'Developer';
-        thinkingMessage = '⚙️ Working on it...';
+        thinkingMessage = 'Generating Code';
       }
 
       // Map commandType to agent type
@@ -172,7 +171,7 @@ Do NOT make any code changes - just provide guidance.`;
         undefined;
 
       // Create a temporary "thinking" message
-      await createMessage({
+      const thinkingMsg = await createMessage({
         ticket_id: ticketDbId,
         user_or_agent: agentName,
         message_type: 'agent',
@@ -191,7 +190,7 @@ Do NOT make any code changes - just provide guidance.`;
         }
 
         // Clean up the response by removing any remaining SSE formatting artifacts
-        let cleanResponse = fullResponse
+        const cleanResponse = fullResponse
           .split('\n')
           .map(line => {
             // Remove "data:" prefix if it exists at the start of the line
@@ -204,6 +203,13 @@ Do NOT make any code changes - just provide guidance.`;
           .filter(line => line && line !== '__END__' && line !== 'END') // Remove empty lines and markers
           .join('\n')
           .trim();
+
+        // Delete the thinking message before creating the actual response
+        try {
+          await deleteMessage(thinkingMsg.id);
+        } catch (deleteError) {
+          console.warn('Failed to delete thinking message:', deleteError);
+        }
 
         // For plan responses, also handle special architect-plan message type
         if (commandType === 'make_plan') {
@@ -229,6 +235,13 @@ Do NOT make any code changes - just provide guidance.`;
         console.log(`✅ @${commandType} command processed successfully`);
         toast.success(`@${commandType} command completed`);
       } catch (error) {
+        // Delete the thinking message on error as well
+        try {
+          await deleteMessage(thinkingMsg.id);
+        } catch (deleteError) {
+          console.warn('Failed to delete thinking message on error:', deleteError);
+        }
+
         console.error(`Error streaming @${commandType} response:`, error);
         await createMessage({
           ticket_id: ticketDbId,
@@ -513,7 +526,7 @@ Do NOT make any code changes - just provide guidance.`;
         }
 
         // Create a temporary "thinking" message
-        await createMessage({
+        const thinkingMsg = await createMessage({
           ticket_id: ticketDbId,
           user_or_agent: agentName,
           message_type: 'agent',
@@ -529,6 +542,13 @@ Do NOT make any code changes - just provide guidance.`;
         try {
           for await (const chunk of executeCommand(ticketId, commandType!, prompt)) {
             fullResponse += chunk;
+          }
+
+          // Delete the thinking message before creating the actual response
+          try {
+            await deleteMessage(thinkingMsg.id);
+          } catch (deleteError) {
+            console.warn('Failed to delete thinking message:', deleteError);
           }
 
           // Handle different response types
@@ -575,6 +595,13 @@ Do NOT make any code changes - just provide guidance.`;
             toast.success('Implementation completed!');
           }
         } catch (error) {
+          // Delete the thinking message on error as well
+          try {
+            await deleteMessage(thinkingMsg.id);
+          } catch (deleteError) {
+            console.warn('Failed to delete thinking message on error:', deleteError);
+          }
+
           console.error(`Error streaming @${commandType} response:`, error);
           const errorMessage = `⚠️ Failed to process @${commandType} command: ${error instanceof Error ? error.message : 'Unknown error'}`;
           await createMessage({
@@ -599,17 +626,16 @@ Do NOT make any code changes - just provide guidance.`;
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-white h-full">
+    <div className="flex-1 flex flex-col bg-gray-50 h-full">
       {/* Header */}
-      <div className="h-14 border-b border-gray-300 flex items-center justify-between px-4 bg-white shadow-sm">
-        <div className="flex items-center gap-2 relative ticket-dropdown-container">
-          <Hash className="w-5 h-5 text-gray-600" />
-          <h1 className="text-gray-900">{ticketName || ticketId}</h1>
+      <div className="h-16 border-b border-gray-200/80 flex items-center justify-between px-6 bg-white/80 backdrop-blur-sm shadow-sm">
+        <div className="flex items-center gap-3 relative ticket-dropdown-container">
+          <h1 className="text-gray-900 font-semibold text-base">{ticketName || ticketId}</h1>
           <button
             onClick={() => setIsTicketDropdownOpen(!isTicketDropdownOpen)}
-            className="p-1 hover:bg-gray-100 rounded transition-colors"
+            className="p-1.5 hover:bg-gray-100 rounded-lg transition-all duration-200 hover:scale-105"
           >
-            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isTicketDropdownOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isTicketDropdownOpen ? 'rotate-180' : ''}`} />
           </button>
           
           {/* Ticket Dropdown */}
@@ -658,7 +684,7 @@ Do NOT make any code changes - just provide guidance.`;
               rel="noopener noreferrer"
               className="ml-2 flex items-center gap-1.5 px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors border border-gray-300"
               title={`Repository: ${repositoryName || repositoryUrl}\nURL: ${repositoryUrl}`}
-              onClick={(e) => {
+              onClick={() => {
                 console.log('🔗 Repository link clicked:', repositoryUrl);
                 // Don't prevent default - let it open the link
               }}
@@ -695,10 +721,10 @@ Do NOT make any code changes - just provide guidance.`;
       {/* Messages */}
       <div 
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto flex flex-col"
+        className="flex-1 overflow-y-auto flex flex-col bg-gray-50"
         style={{ scrollBehavior: 'smooth' }}
       >
-        <div className="max-w-none flex flex-col min-h-full">
+        <div className="max-w-4xl mx-auto w-full flex flex-col min-h-full px-4 py-6">
           {/* Spacer to push content to bottom when content is short */}
           {shouldJustifyEnd && <div className="flex-1 min-h-0" />}
           {/* Messages list */}
@@ -762,11 +788,19 @@ Do NOT make any code changes - just provide guidance.`;
             }
 
                     if (message.message_type === 'agent') {
+              // Determine agent type from metadata or author name
+              let agentType: 'architect' | 'dev' = 'dev';
+              if (message.metadata?.agent === 'architect') {
+                agentType = 'architect';
+              } else if (message.user_or_agent.toLowerCase().includes('architect')) {
+                agentType = 'architect';
+              }
+              
               return (
                 <AgentMessage
                           key={message.id}
                   content={message.content || ''}
-                          agent={message.metadata?.agent || 'dev'}
+                          agent={agentType}
                           author={message.user_or_agent}
                           timestamp={formattedTimestamp}
                           metadata={message.metadata || undefined}
@@ -868,13 +902,7 @@ Do NOT make any code changes - just provide guidance.`;
 
       {/* AI Prompt Box */}
       <div 
-        className="pt-2"
-        style={{
-          background: 'linear-gradient(to top, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.6) 100%)',
-          backdropFilter: 'blur(20px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-          borderTop: '1px solid rgba(0, 0, 0, 0.05)',
-        }}
+        className="pt-4 pb-4 border-t border-gray-200/80 bg-white/80 backdrop-blur-xl"
       >
         <AIPromptBox
           value={inputValue}

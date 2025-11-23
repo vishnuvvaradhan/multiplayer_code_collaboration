@@ -5,13 +5,13 @@ export function TopBar() {
     <div className="h-16 bg-gray-900 flex items-center justify-between px-4 border-b border-gray-800">
       {/* Left: Logo and Search */}
       <div className="flex items-center gap-4 flex-1">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-blue-500 flex items-center justify-center">
-            <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-lg">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
               <path d="M4 10L10 4L16 10M4 10L10 16L16 10" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
-          <span className="text-white">CodeRoom</span>
+          <span className="text-2xl font-bold text-orange-500 tracking-tight">CodeRoom</span>
         </div>
         
         <div className="relative max-w-md flex-1">
