@@ -119,6 +119,34 @@ export async function updateTicket(
   return data;
 }
 
+/**
+ * Delete a ticket by ID
+ * Note: This will also cascade delete associated messages if foreign key constraints are set up
+ */
+export async function deleteTicket(id: string): Promise<void> {
+  // First, delete all messages associated with this ticket
+  const { error: messagesError } = await supabase
+    .from('messages')
+    .delete()
+    .eq('ticket_id', id);
+
+  if (messagesError) {
+    console.error('Error deleting messages:', messagesError);
+    // Continue with ticket deletion even if message deletion fails
+  }
+
+  // Then delete the ticket
+  const { error } = await supabase
+    .from('tickets')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting ticket:', error);
+    throw new Error(`Failed to delete ticket: ${error.message}`);
+  }
+}
+
 // ============================================================================
 // MESSAGE OPERATIONS
 // ============================================================================

@@ -15,6 +15,7 @@ export default function Home() {
   const [selectedTicket, setSelectedTicket] = useState('REL-123');
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
   const [repositoryInfo, setRepositoryInfo] = useState<RepositoryInfo | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Log repository info changes for testing
   useEffect(() => {
@@ -34,6 +35,7 @@ export default function Home() {
           selectedTicket={selectedTicket}
           onSelectTicket={setSelectedTicket}
           onRepositorySelected={setRepositoryInfo}
+          refreshTrigger={refreshTrigger}
         />
 
         <ChatPanel
@@ -49,6 +51,10 @@ export default function Home() {
           <RightPanel
             ticketId={selectedTicket}
             onClose={() => setIsRightPanelOpen(false)}
+            onTicketDeleted={() => {
+              setSelectedTicket('');
+              setRefreshTrigger(prev => prev + 1);
+            }}
           />
         )}
       </div>
