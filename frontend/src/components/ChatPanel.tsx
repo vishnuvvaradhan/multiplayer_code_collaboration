@@ -137,7 +137,7 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
       // Create command-specific prompt
       let prompt = '';
       let agentName = 'AI Assistant';
-      let thinkingMessage = '💭 Thinking...';
+      let thinkingMessage = 'Thinking...';
       
       if (commandType === 'chat') {
         if (!commandMessage) {
@@ -163,15 +163,15 @@ Be concise, actionable, and specific to the ticket context above.
 Do NOT make any code changes - just provide guidance.`;
         
         agentName = 'AI Assistant';
-        thinkingMessage = '💭 Thinking...';
+        thinkingMessage = 'Thinking...';
       } else if (commandType === 'make_plan') {
         prompt = commandMessage || 'Create a plan for this ticket';
         agentName = 'Architect';
-        thinkingMessage = '🏗️ Creating plan...';
+        thinkingMessage = 'Creating Plan...';
       } else if (commandType === 'dev') {
         prompt = commandMessage || 'Implement the plan';
         agentName = 'Developer';
-        thinkingMessage = '⚙️ Working on it...';
+        thinkingMessage = 'Generating Code';
       }
 
       // Map commandType to agent type
@@ -455,9 +455,9 @@ Do NOT make any code changes - just provide guidance.`;
           ticket_id: ticketDbId,
           user_or_agent: 'AI Assistant',
           message_type: 'agent',
-          content: '💭 Thinking...',
+          content: 'Thinking...',
           metadata: {
-    agent: 'dev',
+            agent: 'dev',
             streaming: true,
           },
         });
