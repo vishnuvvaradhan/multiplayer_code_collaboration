@@ -205,11 +205,12 @@ export interface LinearLabel {
   id: string;
   name: string;
   color: string;
+  teamId?: string;
 }
 
 export async function fetchLinearLabels(teamId?: string): Promise<LinearLabel[]> {
   const query = teamId ? `
-    query($teamId: ID!) {
+    query($teamId: String!) {
       team(id: $teamId) {
         labels {
           nodes {
@@ -236,7 +237,12 @@ export async function fetchLinearLabels(teamId?: string): Promise<LinearLabel[]>
   const data = await linearQuery(query, variables);
   
   if (teamId) {
-    return data.team?.labels?.nodes || [];
+    return (data.team?.labels?.nodes || []).map((label: any) => ({
+      id: label.id,
+      name: label.name,
+      color: label.color,
+      teamId: teamId, // Add teamId from the parameter
+    }));
   }
   return data.issueLabels?.nodes || [];
 }
