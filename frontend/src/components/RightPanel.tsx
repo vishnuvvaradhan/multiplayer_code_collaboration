@@ -8,6 +8,8 @@ import { HoldToDeleteButton } from './HoldToDeleteButton';
 import { toast } from 'sonner';
 import { executeCommand, getTicketContext } from '@/lib/backend-api';
 import { Button } from './ui/button';
+import { Recycle } from 'lucide-react';
+import { getAuthorizedUserNames } from '@/lib/authorized-users';
 
 interface RightPanelProps {
   ticketId: string;
@@ -269,6 +271,195 @@ function PlanTab({ ticketId, ticketDbId, ticket, planExists, generating, partici
   const showPlanActions = false;
   const currentUserName = getCurrentUserName();
 
+  // Approval and redo state
+  const [showRedoInput, setShowRedoInput] = useState<{[key: string]: boolean}>({});
+  const [redoMessage, setRedoMessage] = useState('');
+  const [approvals, setApprovals] = useState<{[key: string]: {approved: boolean, approver: string}}>({});
+
+  // Get authorized users for approval tracking
+  const authorizedUsers = getAuthorizedUserNames();
+
+  // Load existing approvals from messages
+  useEffect(() => {
+    if (ticketDbId) {
+      loadApprovals();
+    }
+  }, [ticketDbId]);
+
+  const loadApprovals = async () => {
+    if (!ticketDbId) return;
+
+    try {
+      const messages = await getMessagesByTicketId(ticketDbId);
+      const approvalMap: {[key: string]: {approved: boolean, approver: string}} = {};
+
+      messages.forEach(message => {
+        if (message.message_type === 'system' && message.content) {
+          // Check for plan approval messages
+          const planMatch = message.content.match(/^(.+) approved the plan$/);
+          if (planMatch) {
+            const approver = planMatch[1];
+            approvalMap[`plan-${approver}`] = { approved: true, approver };
+          }
+
+          // Check for PR approval messages
+          const prMatch = message.content.match(/^(.+) approved the PR$/);
+          if (prMatch) {
+            const approver = prMatch[1];
+            approvalMap[`pr-${approver}`] = { approved: true, approver };
+          }
+        }
+      });
+
+      setApprovals(approvalMap);
+
+      // Check if all users approved plan and trigger dev prompt if needed
+      checkAllApproved(messages);
+    } catch (error) {
+      console.error('Error loading approvals:', error);
+    }
+  };
+
+  const checkAllApproved = async (messages: any[]) => {
+    if (!ticketDbId || !planExists) return;
+
+    const planApprovals = messages.filter(msg =>
+      msg.message_type === 'system' &&
+      msg.content?.includes('approved the plan')
+    );
+
+    const uniqueApprovers = new Set(
+      planApprovals.map(msg => {
+        const match = msg.content?.match(/^(.+) approved the plan$/);
+        return match ? match[1] : null;
+      }).filter(Boolean)
+    );
+
+    // If all authorized users have approved and we haven't sent the dev prompt yet
+    if (uniqueApprovers.size === authorizedUsers.length) {
+      const existingPrompt = messages.find(msg =>
+        msg.message_type === 'agent' &&
+        msg.content?.includes('@dev')
+      );
+
+      if (!existingPrompt) {
+        try {
+          await createMessage({
+            ticket_id: ticketDbId,
+            user_or_agent: 'Agent',
+            message_type: 'agent',
+            content: 'All team members have approved the plan! Write `@dev` to start implementing the changes and create a PR.',
+            metadata: {
+              workflow: 'plan_approved',
+              prompt: 'dev_command'
+            }
+          });
+        } catch (error) {
+          console.error('Error sending dev prompt:', error);
+        }
+      }
+    }
+  };
+
+  const handleApproval = async (type: 'plan' | 'pr', approver: string) => {
+    if (!ticketDbId) return;
+
+    try {
+      await createMessage({
+        ticket_id: ticketDbId,
+        user_or_agent: 'System',
+        message_type: 'system',
+        content: `${approver} approved the ${type}`,
+        metadata: {
+          approval: {
+            type: type,
+            user: approver,
+            action: 'approved'
+          }
+        }
+      });
+
+      toast.success(`${type === 'plan' ? 'Plan' : 'PR'} approved!`);
+
+      // Reload approvals to update UI
+      await loadApprovals();
+    } catch (error) {
+      toast.error('Failed to approve');
+    }
+  };
+
+  const handleRedoPlan = async (feedback: string, approver: string) => {
+    if (!ticketDbId || !feedback.trim()) return;
+
+    const trimmed = feedback.trim();
+
+    try {
+      // 1) Send the visible @make_plan command as a human message
+      await createMessage({
+        ticket_id: ticketDbId,
+        user_or_agent: approver,
+        message_type: 'human',
+        content: `@make_plan ${trimmed}`,
+      });
+
+      // 2) Immediately log the feedback as a system message so it shows in chat
+      await createMessage({
+        ticket_id: ticketDbId,
+        user_or_agent: 'System',
+        message_type: 'system',
+        content: `${approver} requested plan changes: "${trimmed}"`,
+        metadata: {
+          approval: {
+            type: 'plan',
+            user: approver,
+            action: 'feedback',
+          },
+        },
+      });
+
+      // 3) Then run the @make_plan flow and create a new architect-plan message
+      let fullResponse = '';
+      try {
+        const prompt = trimmed || 'Create a plan for this ticket';
+
+        for await (const chunk of executeCommand(ticketId, 'make_plan', prompt)) {
+          fullResponse += chunk;
+        }
+
+        const cleanResponse = fullResponse.trim() || 'No response received.';
+
+        await createMessage({
+          ticket_id: ticketDbId,
+          user_or_agent: 'Architect',
+          message_type: 'architect-plan',
+          content: cleanResponse,
+          metadata: {
+            agent: 'architect',
+          },
+        });
+      } catch (err) {
+        console.error('Error streaming @make_plan response from feedback:', err);
+        await createMessage({
+            ticket_id: ticketDbId,
+            user_or_agent: 'System',
+            message_type: 'system',
+            content: `⚠️ Failed to process @make_plan feedback: ${
+              err instanceof Error ? err.message : 'Unknown error'
+            }`,
+          });
+        toast.error('Failed to process @make_plan feedback');
+      }
+
+      setRedoMessage('');
+      setShowRedoInput((prev) => ({ ...prev, [approver]: false }));
+
+      toast.success('Feedback sent! Plan will be regenerated.');
+    } catch (error) {
+      console.error('Error handling redo plan:', error);
+      toast.error('Failed to send feedback');
+    }
+  };
+
   const ticketIdentifier = ticket?.ticket_identifier || ticketId;
   const ticketName = ticket?.ticket_name || 'Ticket Details';
   const ticketDescription = ticket?.description || 'No description provided for this ticket yet.';
@@ -390,62 +581,127 @@ function PlanTab({ ticketId, ticketDbId, ticket, planExists, generating, partici
         </div>
       </div>
 
-      {/* Approval Section */}
+      {/* Plan Approval Section */}
       <div className="bg-white border border-gray-300 rounded-md p-4 shadow-sm">
-        <h4 className="text-xs text-gray-700 mb-3 uppercase tracking-wide">Approvals</h4>
-        {sortedParticipants.length === 0 ? (
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-xs text-gray-700 uppercase tracking-wide">Plan Approval</h4>
+          {planExists && (
+            <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">
+              Plan Generated
+            </span>
+          )}
+        </div>
+
+        {authorizedUsers.length === 0 ? (
           <p className="text-sm text-gray-600">
-            Add participants to this ticket to request approvals.
+            No authorized users configured.
           </p>
         ) : (
           <div className="space-y-3">
-            {sortedParticipants.map((person) => {
+            {authorizedUsers.map((person) => {
               const color = getUserColor(person);
               const isCurrentUser = person === currentUserName;
-              const isApproved = isCurrentUser && planExists;
+              const planApproval = approvals[`plan-${person}`];
+              const hasApproved = planApproval?.approved;
+              const canApprove = isCurrentUser && planExists && !hasApproved;
 
               return (
-                <div key={person} className="flex items-center gap-3">
-                  <div className="relative">
-                    <div
-                      className={`w-9 h-9 rounded-full ${color.bg} ${color.text} flex items-center justify-center border border-gray-300 shadow-sm`}
-                    >
-                      <span className="text-sm font-medium">
-                        {getUserInitials(person)}
-                      </span>
+                <div key={`plan-${person}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <div
+                          className={`w-9 h-9 rounded-full ${color.bg} ${color.text} flex items-center justify-center border border-gray-300 shadow-sm`}
+                        >
+                          <span className="text-sm font-medium">
+                            {getUserInitials(person)}
+                          </span>
+                        </div>
+                        <div
+                          className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center ${
+                            hasApproved ? 'bg-green-600' : 'bg-gray-300'
+                          }`}
+                        >
+                          {hasApproved ? (
+                            <Check className="w-2.5 h-2.5 text-white" />
+                          ) : (
+                            <Clock className="w-2.5 h-2.5 text-gray-600" />
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-gray-900">{person}</div>
+                        <div className="text-xs text-gray-600">
+                          {hasApproved ? 'Approved' : 'Pending'}
+                        </div>
+                      </div>
                     </div>
-                    <div
-                      className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center ${
-                        isApproved ? 'bg-green-600' : 'bg-gray-300'
-                      }`}
-                    >
-                      {isApproved ? (
-                        <Check className="w-2.5 h-2.5 text-white" />
-                      ) : (
-                        <Clock className="w-2.5 h-2.5 text-gray-600" />
-                      )}
-                    </div>
+
+                    {/* Approval buttons for current user */}
+                    {canApprove && (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          onClick={() => handleApproval('plan', person)}
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700 text-white px-3"
+                        >
+                          <Check className="w-3 h-3 mr-1" />
+                          Approve
+                        </Button>
+                        <Button
+                          onClick={() => setShowRedoInput(prev => ({ ...prev, [person]: !prev[person] }))}
+                          variant="outline"
+                          size="sm"
+                          className="text-gray-600 border-gray-300 hover:bg-gray-50"
+                        >
+                          <Recycle className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Status indicator for approved users */}
+                    {hasApproved && (
+                      <div className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
+                        <Check className="w-3 h-3" />
+                        Approved
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <div className="text-sm text-gray-900">{person}</div>
-                    <div className="text-xs text-gray-600">
-                      {isApproved
-                        ? 'Approved (based on existing plan)'
-                        : 'Pending'}
+
+                  {/* Redo Input Section */}
+                  {showRedoInput[person] && (
+                    <div className="mt-3 p-3 bg-gray-50 rounded-md">
+                      <textarea
+                        value={redoMessage}
+                        onChange={(e) => setRedoMessage(e.target.value)}
+                        placeholder="What changes would you like to see in the plan?"
+                        className="w-full p-2 border border-gray-300 rounded-md text-sm resize-none"
+                        rows={3}
+                      />
+                      <div className="flex justify-end gap-2 mt-2">
+                        <Button
+                          onClick={() => setShowRedoInput(prev => ({ ...prev, [person]: false }))}
+                          variant="outline"
+                          size="sm"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={() => handleRedoPlan(redoMessage, person)}
+                          disabled={!redoMessage.trim()}
+                          size="sm"
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          Send Feedback
+                        </Button>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               );
             })}
           </div>
         )}
-
-        <div className="mt-4">
-          <p className="text-xs text-gray-500">
-            Approvals are inferred from the people attached to this ticket and
-            the existence of a plan in the chat.
-          </p>
-        </div>
       </div>
     </div>
   );
