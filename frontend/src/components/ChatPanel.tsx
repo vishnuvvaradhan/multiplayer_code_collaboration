@@ -8,13 +8,14 @@ import { DiffGeneratedCard } from './messages/DiffGeneratedCard';
 import { EmptyState } from './EmptyState';
 import { LoadingState } from './LoadingState';
 import { AIPromptBox } from './AIPromptBox';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMessages } from '@/hooks/useMessages';
 import { createMessage, formatTimestamp, getUserInitials, getUserColor } from '@/lib/database';
-import { getCurrentUserName } from '@/lib/supabase';
+import { getCurrentUserName, Message } from '@/lib/supabase';
 import { getTicketByIdentifier } from '@/lib/database';
 import { toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { executeCommand, getTicketContext } from '@/lib/backend-api';
 
 interface ChatPanelProps {
   ticketId: string;
@@ -41,6 +42,7 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
   const isUserScrollingRef = useRef(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentUser = getCurrentUserName();
+  const processedCommandsRef = useRef<Set<string>>(new Set());
 
   // Fetch all tickets for dropdown
   useEffect(() => {
@@ -77,10 +79,154 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
     fetchTicket();
   }, [ticketId]);
 
+  // Process commands from new messages (from teammates)
+  const processCommandFromMessage = useCallback(async (message: Message) => {
+    // Skip if already processed
+    if (processedCommandsRef.current.has(message.id)) {
+      return;
+    }
+
+    // Skip if it's from the current user (they already triggered it)
+    if (message.user_or_agent === currentUser) {
+      processedCommandsRef.current.add(message.id);
+      return;
+    }
+
+    // Skip if not a human message
+    if (message.message_type !== 'human') {
+      return;
+    }
+
+    // Check if message contains a command
+    const content = message.content?.trim() || '';
+    
+    // Detect command type
+    let commandType: 'chat' | 'make_plan' | 'dev' | null = null;
+    let commandMessage = '';
+    
+    if (content.startsWith('@chat')) {
+      commandType = 'chat';
+      commandMessage = content.slice(5).trim();
+    } else if (content.startsWith('@make_plan')) {
+      commandType = 'make_plan';
+      commandMessage = content.slice(10).trim();
+    } else if (content.startsWith('@dev')) {
+      commandType = 'dev';
+      commandMessage = content.slice(4).trim();
+    }
+
+    if (!commandType) {
+      return; // No command detected
+    }
+
+    // Mark as processed
+    processedCommandsRef.current.add(message.id);
+
+    // Process the command
+    try {
+      console.log(`🤖 Processing @${commandType} command from teammate:`, message.user_or_agent);
+      
+      if (!ticketDbId) {
+        console.error('No ticket ID available for command processing');
+        return;
+      }
+
+      // Get ticket context
+      const context = await getTicketContext(ticketId);
+      
+      // Create command-specific prompt
+      let prompt = '';
+      let agentName = 'AI Assistant';
+      let thinkingMessage = '💭 Thinking...';
+      
+      if (commandType === 'chat') {
+        if (!commandMessage) {
+          console.warn('Empty @chat command, skipping');
+          return;
+        }
+        
+        prompt = `${context}
+
+---
+
+# USER QUESTION
+
+${commandMessage}
+
+---
+
+# INSTRUCTIONS
+
+You are a helpful coding assistant in a collaborative ticket chat.
+Provide a QUICK and SHORT response (2-3 sentences max) to answer the user's question.
+Be concise, actionable, and specific to the ticket context above.
+Do NOT make any code changes - just provide guidance.`;
+        
+        agentName = 'AI Assistant';
+        thinkingMessage = '💭 Thinking...';
+      } else if (commandType === 'make_plan') {
+        prompt = commandMessage || 'Create a plan for this ticket';
+        agentName = 'Architect';
+        thinkingMessage = '🏗️ Creating plan...';
+      } else if (commandType === 'dev') {
+        prompt = commandMessage || 'Implement the plan';
+        agentName = 'Developer';
+        thinkingMessage = '⚙️ Working on it...';
+      }
+
+      // Create a temporary "thinking" message
+      await createMessage({
+        ticket_id: ticketDbId,
+        user_or_agent: agentName,
+        message_type: 'agent',
+        content: thinkingMessage,
+        metadata: {
+          agent: commandType,
+          streaming: true,
+        },
+      });
+
+      // Stream the response
+      let fullResponse = '';
+      try {
+        for await (const chunk of executeCommand(ticketId, commandType, prompt)) {
+          fullResponse += chunk;
+        }
+
+        // Save the final response
+        await createMessage({
+          ticket_id: ticketDbId,
+          user_or_agent: agentName,
+          message_type: 'agent',
+          content: fullResponse || 'No response received.',
+          metadata: {
+            agent: commandType,
+          },
+        });
+
+        console.log(`✅ @${commandType} command processed successfully`);
+        toast.success(`@${commandType} command completed`);
+      } catch (error) {
+        console.error(`Error streaming @${commandType} response:`, error);
+        await createMessage({
+          ticket_id: ticketDbId,
+          user_or_agent: 'System',
+          message_type: 'system',
+          content: `⚠️ Failed to process @${commandType} command: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        });
+        toast.error(`Failed to process @${commandType} command`);
+      }
+    } catch (error) {
+      console.error('Error processing command from message:', error);
+      toast.error('Failed to process command');
+    }
+  }, [ticketId, ticketDbId, currentUser]);
+
   // Use the messages hook for polling
   const { messages: dbMessages, loading, error } = useMessages({
     ticketId: ticketDbId,
     enabled: !!ticketDbId,
+    onNewMessage: processCommandFromMessage,
   });
 
   // Check if user is near the bottom of the scroll container
@@ -244,10 +390,14 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
     if (!inputValue.trim() || !ticketDbId || sending) return;
 
     const messageContent = inputValue.trim();
-      setInputValue('');
+    setInputValue('');
     setSending(true);
 
     try {
+      // Check if message starts with @chat
+      const isChatCommand = messageContent.startsWith('@chat');
+      
+      // Save the user's message
       await createMessage({
         ticket_id: ticketDbId,
         user_or_agent: currentUser,
@@ -255,12 +405,89 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
         content: messageContent,
         metadata: {
           avatar: getUserInitials(currentUser),
+          isCommand: isChatCommand,
         },
       });
 
       // Always scroll to bottom when user sends a message
       scrollToBottom(true);
-      // Message will appear via polling
+
+      // If it's a @chat command, process it
+      if (isChatCommand) {
+        // Extract the actual message (remove @chat prefix)
+        const chatMessage = messageContent.slice(5).trim(); // Remove '@chat'
+        
+        if (!chatMessage) {
+          toast.error('Please provide a message after @chat');
+          return;
+        }
+
+        // Get ticket context
+        const context = await getTicketContext(ticketId);
+        
+        // Create a specialized prompt for quick responses
+        const prompt = `${context}
+
+---
+
+# USER QUESTION
+
+${chatMessage}
+
+---
+
+# INSTRUCTIONS
+
+You are a helpful coding assistant in a collaborative ticket chat.
+Provide a QUICK and SHORT response (2-3 sentences max) to answer the user's question.
+Be concise, actionable, and specific to the ticket context above.
+Do NOT make any code changes - just provide guidance.`;
+
+        // Create a temporary "thinking" message
+        const thinkingMessage = await createMessage({
+          ticket_id: ticketDbId,
+          user_or_agent: 'AI Assistant',
+          message_type: 'agent',
+          content: '💭 Thinking...',
+          metadata: {
+            agent: 'chat',
+            streaming: true,
+          },
+        });
+
+        // Stream the response
+        let fullResponse = '';
+        try {
+          for await (const chunk of executeCommand(ticketId, 'chat', prompt)) {
+            fullResponse += chunk;
+            
+            // Update the message in real-time (this will be picked up by polling)
+            // For now, we'll just collect and save at the end
+          }
+
+          // Save the final response
+          await createMessage({
+            ticket_id: ticketDbId,
+            user_or_agent: 'AI Assistant',
+            message_type: 'agent',
+            content: fullResponse || 'No response received.',
+            metadata: {
+              agent: 'chat',
+            },
+          });
+
+          toast.success('Response received');
+        } catch (error) {
+          console.error('Error streaming @chat response:', error);
+          await createMessage({
+            ticket_id: ticketDbId,
+            user_or_agent: 'System',
+            message_type: 'system',
+            content: `⚠️ Failed to get @chat response: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          });
+          toast.error('Failed to get response from AI');
+        }
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       toast.error('Failed to send message', {

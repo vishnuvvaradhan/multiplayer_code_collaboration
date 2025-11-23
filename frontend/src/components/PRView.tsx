@@ -1,9 +1,44 @@
-import { GitPullRequest, CheckCircle, GitCommit, MessageSquare } from 'lucide-react';
+import { GitPullRequest, CheckCircle, GitCommit, MessageSquare, Loader2, ExternalLink } from 'lucide-react';
 import { getUserColor, getUserInitials } from '@/lib/database';
+import { Button } from './ui/button';
 
-export function PRView() {
+interface PRViewProps {
+  ticketId: string;
+  ticketDbId: string | null;
+  planExists: boolean;
+  prExists: boolean;
+  generating: boolean;
+  onGeneratePR: () => Promise<void>;
+}
+
+export function PRView({ ticketId, ticketDbId, planExists, prExists, generating, onGeneratePR }: PRViewProps) {
   return (
     <div className="p-6 space-y-6">
+      {/* Action Button */}
+      <Button
+        onClick={onGeneratePR}
+        disabled={generating || !ticketDbId || !planExists}
+        className="w-full"
+        variant={prExists ? "outline" : "default"}
+      >
+        {generating ? (
+          <>
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            Generating PR...
+          </>
+        ) : (
+          <>
+            <GitPullRequest className="w-4 h-4 mr-2" />
+            Generate PR
+          </>
+        )}
+      </Button>
+      
+      {!planExists && !prExists && (
+        <div className="text-center py-8 text-gray-500 text-sm">
+          Please create a plan first before generating a PR.
+        </div>
+      )}
       {/* PR Header */}
       <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 shadow-sm">
         <div className="flex items-start gap-3 mb-4">

@@ -358,11 +358,16 @@ def gemini_dev(ticket_id: str) -> Generator[str, None, None]:
     files_changed = 0
     total_changes = 0
     
+    yield "\n📝 Applying changes to files...\n"
+    
     for file_entry in changes_data.get("files", []):
         file_path = os.path.join(workspace, file_entry["path"])
         
+        yield f"\n🔍 Processing: {file_entry['path']}\n"
+        
         if not os.path.exists(file_path):
-            yield f"⚠️  File not found: {file_entry['path']}, skipping...\n"
+            yield f"⚠️  File not found: {file_path}\n"
+            yield f"   (Looking in workspace: {workspace})\n"
             continue
         
         # Read the file
@@ -373,40 +378,85 @@ def gemini_dev(ticket_id: str) -> Generator[str, None, None]:
         changes_applied = 0
         
         # Apply each change
-        for change in file_entry.get("changes", []):
+        for idx, change in enumerate(file_entry.get("changes", []), 1):
             search_text = change.get("search", "")
             replace_text = change.get("replace", "")
             
-            if search_text in content:
+            if not search_text and replace_text:
+                # This is a new file creation
+                content = replace_text
+                changes_applied += 1
+                total_changes += 1
+                yield f"   ✅ Change {idx}: Creating new file content\n"
+            elif search_text in content:
                 content = content.replace(search_text, replace_text, 1)  # Replace only first occurrence
                 changes_applied += 1
                 total_changes += 1
+                yield f"   ✅ Change {idx}: Applied successfully\n"
             else:
-                yield f"⚠️  Search text not found in {file_entry['path']}, skipping change...\n"
+                yield f"   ⚠️  Change {idx}: Search text not found, skipping...\n"
+                # Show first 100 chars of search text for debugging
+                search_preview = search_text[:100].replace('\n', '\\n')
+                yield f"      Looking for: {search_preview}...\n"
         
         # Write back if changes were made
         if content != original_content:
             with open(file_path, "w") as f:
                 f.write(content)
             files_changed += 1
-            yield f"✅ Applied {changes_applied} change(s) to {file_entry['path']}\n"
+            yield f"✅ Saved {file_entry['path']} with {changes_applied} change(s)\n"
+        else:
+            yield f"⚠️  No changes applied to {file_entry['path']}\n"
     
     yield f"\n✅ Total: {total_changes} changes applied across {files_changed} file(s)\n"
 
-    # Stage all changes including the changes JSON
+    # Check if gh CLI is available
+    gh_check = subprocess.run(
+        ["which", "gh"],
+        capture_output=True,
+        text=True
+    )
+    
+    if gh_check.returncode != 0:
+        yield "\n⚠️  GitHub CLI (gh) not found. Please install it to create PRs automatically.\n"
+        yield "Install instructions: https://cli.github.com/\n"
+        yield "For now, changes have been applied locally. You can manually commit and push.\n"
+        return
+
+    # Stage all changes (excluding the changes JSON file)
     subprocess.run(["git", "add", "."], cwd=workspace)
-    subprocess.run(["git", "commit", "-m", "AI-generated implementation"], cwd=workspace)
+    
+    # Remove the changes JSON from staging
+    subprocess.run(["git", "reset", "HEAD", changes_filename], cwd=workspace)
+    
+    commit_result = subprocess.run(
+        ["git", "commit", "-m", f"AI-generated implementation for {ticket_id}"],
+        cwd=workspace,
+        capture_output=True,
+        text=True
+    )
+    
+    if commit_result.returncode != 0:
+        yield f"\n⚠️  Git commit failed: {commit_result.stderr}\n"
+        return
 
     yield "Changes committed.\n"
 
     branch_name = f"ticket_{ticket_id}"
-    subprocess.run(
+    push_result = subprocess.run(
         ["git", "push", "--set-upstream", "origin", branch_name],
         cwd=workspace,
+        capture_output=True,
+        text=True
     )
+    
+    if push_result.returncode != 0:
+        yield f"\n⚠️  Git push failed: {push_result.stderr}\n"
+        return
+        
     yield f"Branch '{branch_name}' pushed to origin.\n"
 
- 
+    # Check if PR already exists
     pr_view = subprocess.run(
         ["gh", "pr", "view", branch_name, "--json", "url"],
         cwd=workspace,
@@ -417,11 +467,11 @@ def gemini_dev(ticket_id: str) -> Generator[str, None, None]:
     if pr_view.returncode == 0:
         try:
             pr_url = json.loads(pr_view.stdout)["url"]
-            yield f"Existing PR detected: {pr_url}\n"
+            yield f"\n✅ Existing PR detected: {pr_url}\n"
             yield "PR updated with new commits.\n"
+            yield f"_PR_URL_{pr_url}_END_\n"
             return
         except Exception:
-            
             pass
 
     # Otherwise create a new PR
@@ -445,9 +495,19 @@ def gemini_dev(ticket_id: str) -> Generator[str, None, None]:
     )
 
     if pr_create.returncode != 0:
-        yield "Error creating PR:\n"
-        yield pr_create.stderr
+        yield f"\n❌ Error creating PR: {pr_create.stderr}\n"
         return
 
-    yield pr_create.stdout
-    yield "Pull request created successfully.\n"
+    # Extract PR URL from output
+    pr_url_match = None
+    for line in pr_create.stdout.split('\n'):
+        if 'https://github.com' in line:
+            pr_url_match = line.strip()
+            break
+    
+    if pr_url_match:
+        yield f"\n✅ Pull request created: {pr_url_match}\n"
+        yield f"_PR_URL_{pr_url_match}_END_\n"
+    else:
+        yield pr_create.stdout
+        yield "\n✅ Pull request created successfully.\n"
