@@ -1,85 +1,85 @@
-@import "tailwindcss";
-
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 @custom-variant dark (&:is(.dark *));
-
 :root {
   --font-size: 16px;
-  --background: #ffffff;
-  --foreground: oklch(0.145 0 0);
-  --card: #ffffff;
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: #030213;
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.95 0.0058 264.53);
-  --secondary-foreground: #030213;
-  --muted: #ececf0;
-  --muted-foreground: #717182;
-  --accent: #e9ebef;
-  --accent-foreground: #030213;
-  --destructive: #d4183d;
-  --destructive-foreground: #ffffff;
-  --border: rgba(0, 0, 0, 0.1);
-  --input: transparent;
-  --input-background: #f3f3f5;
-  --switch-background: #cbced4;
+  --background: 0 0% 100%; /* HSL for white */
+  --foreground: 222.2 47.4% 11.2%; /* HSL for dark slate */
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 47.4% 11.2%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 47.4% 11.2%;
+  --primary: 222.2 47.4% 11.2%; /* Dark Blue */
+  --primary-foreground: 210 20% 98%; /* Light off-white */
+  --secondary: 210 40% 96.1%; /* Light Gray */
+  --secondary-foreground: 222.2 47.4% 11.2%; /* Dark slate */
+  --muted: 210 40% 96.1%; /* Even lighter gray */
+  --muted-foreground: 215.4 16.3% 46.9%; /* Medium gray */
+  --accent: 210 40% 96.1%; /* Light Blue/Gray */
+  --accent-foreground: 222.2 47.4% 11.2%; /* Dark slate */
+  --destructive: 0 84.2% 60.2%; /* Red */
+  --destructive-foreground: 210 20% 98%; /* Light off-white */
+  --border: 214.3 31.8% 91.4%; /* Light border gray */
+  --input: 214.3 31.8% 91.4%; /* Light input border */
+  --ring: 222.2 84% 4.9%; /* Darker blue for focus ring */
+  --input-background: 210 40% 96.1%; /* Light gray for input background */
+  --switch-background: 214.3 31.8% 91.4%; /* Light gray for switch background */
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: #030213;
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --chart-1: 172 80% 40%;
+  --chart-2: 240 60% 50%;
+  --chart-3: 300 70% 60%;
+  --chart-4: 60 80% 50%;
+  --chart-5: 0 70% 60%;
+  --radius: 0.5rem; /* Slightly smaller radius for a modern feel */
+  --sidebar: 0 0% 100%;
+  --sidebar-foreground: 222.2 47.4% 11.2%;
+  --sidebar-primary: 222.2 47.4% 11.2%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 210 40% 96.1%;
+  --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+  --sidebar-border: 214.3 31.8% 91.4%;
+  --sidebar-ring: 222.2 84% 4.9%;
 }
-
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
+  --background: 222.2 47.4% 11.2%; /* Dark slate */
+  --foreground: 210 20% 98%; /* Light off-white */
+  --card: 222.2 47.4% 11.2%;
+  --card-foreground: 210 20% 98%;
+  --popover: 222.2 47.4% 11.2%;
+  --popover-foreground: 210 20% 98%;
+  --primary: 210 20% 98%; /* Light off-white */
+  --primary-foreground: 222.2 47.4% 11.2%; /* Dark slate */
+  --secondary: 217.2 32.6% 17.5%; /* Darker gray */
+  --secondary-foreground: 210 20% 98%; /* Light off-white */
+  --muted: 217.2 32.6% 17.5%; /* Darker muted gray */
+  --muted-foreground: 215 20.2% 65.1%; /* Lighter medium gray */
+  --accent: 217.2 32.6% 17.5%; /* Darker accent gray */
+  --accent-foreground: 210 20% 98%; /* Light off-white */
+  --destructive: 0 62.8% 30.6%; /* Darker red */
+  --destructive-foreground: 210 20% 98%; /* Light off-white */
+  --border: 217.2 32.6% 17.5%; /* Darker border gray */
+  --input: 217.2 32.6% 17.5%; /* Darker input border */
+  --ring: 217.2 32.6% 17.5%; /* Darker ring for focus */
+  --input-background: 217.2 32.6% 17.5%;
+  --switch-background: 217.2 32.6% 17.5%;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  --chart-1: 172 80% 60%;
+  --chart-2: 240 70% 70%;
+  --chart-3: 300 80% 80%;
+  --chart-4: 60 70% 70%;
+  --chart-5: 0 80% 70%;
+  --sidebar: 222.2 47.4% 11.2%;
+  --sidebar-foreground: 210 20% 98%;
+  --sidebar-primary: 210 20% 98%;
+  --sidebar-primary-foreground: 222.2 47.4% 11.2%;
+  --sidebar-accent: 217.2 32.6% 17.5%;
+  --sidebar-accent-foreground: 210 20% 98%;
+  --sidebar-border: 217.2 32.6% 17.5%;
+  --sidebar-ring: 217.2 32.6% 17.5%;
 }
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -120,17 +120,14 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 }
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-
   body {
     @apply bg-background text-foreground;
   }
 }
-
 /**
  * Base typography. This is not applied to elements which have an ancestor with a Tailwind text class.
  */
@@ -141,43 +138,36 @@
       font-weight: var(--font-weight-medium);
       line-height: 1.5;
     }
-
     h2 {
       font-size: var(--text-xl);
       font-weight: var(--font-weight-medium);
       line-height: 1.5;
     }
-
     h3 {
       font-size: var(--text-lg);
       font-weight: var(--font-weight-medium);
       line-height: 1.5;
     }
-
     h4 {
       font-size: var(--text-base);
       font-weight: var(--font-weight-medium);
       line-height: 1.5;
     }
-
     p {
       font-size: var(--text-base);
       font-weight: var(--font-weight-normal);
       line-height: 1.5;
     }
-
     label {
       font-size: var(--text-base);
       font-weight: var(--font-weight-medium);
       line-height: 1.5;
     }
-
     button {
       font-size: var(--text-base);
       font-weight: var(--font-weight-medium);
       line-height: 1.5;
     }
-
     input {
       font-size: var(--text-base);
       font-weight: var(--font-weight-normal);
@@ -185,11 +175,9 @@
     }
   }
 }
-
 html {
   font-size: var(--font-size);
 }
-
 /* Shimmer animation for buttons */
 @keyframes shimmer {
   0% {
@@ -199,7 +187,6 @@ html {
     transform: translateX(100%);
   }
 }
-
 /* Shimmer animation for text */
 @keyframes shimmer-text {
   0% {
@@ -209,16 +196,13 @@ html {
     background-position: 200% 0;
   }
 }
-
 .animate-shimmer-text {
   animation: shimmer-text 2s linear infinite;
 }
-
 .shimmer-effect {
   position: relative;
   overflow: hidden;
 }
-
 .shimmer-effect::before {
   content: '';
   position: absolute;
@@ -235,7 +219,6 @@ html {
   animation: shimmer 2s infinite;
   pointer-events: none;
 }
-
 /* Modern dropdown animations */
 @keyframes slideDownFade {
   from {
@@ -247,7 +230,6 @@ html {
     transform: translateY(0) scale(1);
   }
 }
-
 @keyframes slideUpFade {
   from {
     opacity: 1;
@@ -258,7 +240,6 @@ html {
     transform: translateY(-10px) scale(0.95);
   }
 }
-
 @keyframes slideDownExpand {
   from {
     opacity: 0;
@@ -271,7 +252,6 @@ html {
     transform: translateY(0);
   }
 }
-
 @keyframes slideUpCollapse {
   from {
     opacity: 1;
@@ -284,20 +264,16 @@ html {
     transform: translateY(-8px);
   }
 }
-
 .dropdown-enter {
   animation: slideDownFade 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
-
 .dropdown-exit {
   animation: slideUpFade 0.15s cubic-bezier(0.7, 0, 0.84, 0) forwards;
 }
-
 .collapse-enter {
   animation: slideDownExpand 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   overflow: hidden;
 }
-
 .collapse-exit {
   animation: slideUpCollapse 0.25s cubic-bezier(0.7, 0, 0.84, 0) forwards;
   overflow: hidden;
