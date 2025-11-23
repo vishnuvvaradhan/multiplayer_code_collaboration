@@ -1,10 +1,12 @@
 import { Bot, FileCode, CheckCircle } from 'lucide-react';
+import { MarkdownRenderer } from '../MarkdownRenderer';
 
 interface ArchitectPlanCardProps {
   timestamp: string;
+  content?: string;
 }
 
-export function ArchitectPlanCard({ timestamp }: ArchitectPlanCardProps) {
+export function ArchitectPlanCard({ timestamp, content }: ArchitectPlanCardProps) {
   return (
     <div className="px-4 py-3 hover:bg-gray-50 group transition-colors border-t border-gray-100">
       <div className="flex gap-3">
@@ -20,52 +22,24 @@ export function ArchitectPlanCard({ timestamp }: ArchitectPlanCardProps) {
           <div className="border border-gray-300 rounded-md p-4 bg-white shadow-sm">
             <div className="flex items-center gap-2 mb-3 pb-3 border-b border-gray-200">
               <CheckCircle className="w-5 h-5 text-green-600" />
-              <h3 className="text-gray-900">Implementation Plan Created</h3>
+              <h3 className="text-gray-900">Implementation Plan</h3>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-xs text-gray-700 mb-2 uppercase tracking-wide">Approach</h4>
-                <ul className="space-y-2">
-                  <li className="text-sm text-gray-800 flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-gray-600 mt-1.5 flex-shrink-0"></div>
-                    Create a validation utility with card number, CVV, and expiry validation
-                  </li>
-                  <li className="text-sm text-gray-800 flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-gray-600 mt-1.5 flex-shrink-0"></div>
-                    Build an ErrorMessage component for consistent error display
-                  </li>
-                  <li className="text-sm text-gray-800 flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-gray-600 mt-1.5 flex-shrink-0"></div>
-                    Update PaymentForm to integrate validation on blur and submit
-                  </li>
-                </ul>
-              </div>
+            <div className="prose prose-sm max-w-none">
+              {content ? (
+                <MarkdownRenderer content={content} className="text-sm" />
+              ) : (
+                <p className="text-sm text-gray-600 italic">Plan content loading...</p>
+              )}
+            </div>
 
-              <div>
-                <h4 className="text-xs text-gray-700 mb-2 uppercase tracking-wide">Files to modify</h4>
-                <div className="flex flex-wrap gap-2">
-                  <div className="px-2.5 py-1.5 bg-blue-50 rounded-md text-xs text-blue-700 flex items-center gap-1.5 border border-blue-200">
-                    <FileCode className="w-3.5 h-3.5" />
-                    PaymentForm.tsx
-                  </div>
-                  <div className="px-2.5 py-1.5 bg-blue-50 rounded-md text-xs text-blue-700 flex items-center gap-1.5 border border-blue-200">
-                    <FileCode className="w-3.5 h-3.5" />
-                    validation.ts
-                  </div>
-                  <div className="px-2.5 py-1.5 bg-blue-50 rounded-md text-xs text-blue-700 flex items-center gap-1.5 border border-blue-200">
-                    <FileCode className="w-3.5 h-3.5" />
-                    ErrorMessage.tsx
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-gray-200">
+            {content && (
+              <div className="pt-3 border-t border-gray-200 mt-4">
                 <button className="text-sm text-blue-600 hover:text-blue-700 hover:underline">
                   View full plan in details panel →
                 </button>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

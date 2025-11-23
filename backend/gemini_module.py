@@ -21,6 +21,7 @@ import json
 import subprocess
 import time
 from typing import Generator, Dict
+from database import get_messages_by_ticket_identifier, format_chat_history
 
 TICKETS_ROOT = "./tickets"          # Root directory for all ticket repos
 SESSION_STORE: Dict[str, str] = {}  # ticket_id -> Gemini session UUID
@@ -33,6 +34,7 @@ def stream_subprocess(cmd, cwd: str) -> Generator[str, None, None]:
     """
     Run a subprocess and stream stdout line-by-line.
     This is used so the FastAPI layer can forward output via SSE.
+    Filters out Gemini's own "data:" prefixes to avoid double-wrapping.
     """
     proc = subprocess.Popen(
         cmd,
@@ -44,7 +46,14 @@ def stream_subprocess(cmd, cwd: str) -> Generator[str, None, None]:
 
     if proc.stdout:
         for line in proc.stdout:
-            yield line
+            # Remove "data: " prefix if Gemini CLI adds it
+            cleaned_line = line
+            if cleaned_line.strip().startswith('data:'):
+                cleaned_line = cleaned_line.strip()[5:].strip()  # Remove "data:" prefix
+            
+            # Skip empty lines and __END__ markers from Gemini
+            if cleaned_line.strip() and cleaned_line.strip() != '__END__':
+                yield cleaned_line
 
     proc.wait()
 
@@ -182,19 +191,29 @@ def gemini_chat(ticket_id: str, prompt: str) -> Generator[str, None, None]:
     """
     Handle @chat:
     - Uses the per-ticket Gemini session (so it remembers prior Q&A and repo context).
+    - Includes conversation history for context.
     - Designed for explanation/debugging, not guaranteed to change files.
     """
     if not prompt:
         yield "Error: @chat requires a message.\n"
         return
 
+    # Get conversation history for context
+    try:
+        messages = get_messages_by_ticket_id(ticket_id)
+        chat_history = format_chat_history(messages)
+    except Exception as e:
+        chat_history = f"Error retrieving chat history: {e}"
+
     system_prompt = (
         "You are a helpful coding assistant working inside a collaborative ticket.\n"
-        "Answer questions about this repository and the ticket context.\n"
+        "You have access to the conversation history and repository context.\n"
+        "Answer questions about this repository and help with development tasks.\n"
         "Unless explicitly requested, do NOT modify any files.\n"
+        "Be aware of the ongoing conversation and previous discussions.\n"
     )
 
-    full_prompt = f"{system_prompt}\n\nUser message:\n{prompt}"
+    full_prompt = f"{system_prompt}\n\nConversation History:\n{chat_history}\n\nCurrent User Message:\n{prompt}"
     yield from run_gemini_prompt(ticket_id, full_prompt)
 
 
@@ -203,12 +222,16 @@ def gemini_chat(ticket_id: str, prompt: str) -> Generator[str, None, None]:
 # -----------------------------------------------------------------------------
 def get_chat_context(ticket_id: str) -> str:
     """
-    TODO: integrate with Supabase or other storage.
-
-    For now, returns an empty string. In the future, this should return
-    a summarized chat history string for the given ticket_id.
+    Get the chat history for a ticket to provide context for planning and development.
+    Returns formatted conversation history from Supabase.
+    ticket_id can be either a UUID or human-readable identifier (e.g., "COD-28")
     """
-    return "Generate a new front end. All we need is to play a little with the html file! Make it blue"
+    try:
+        messages = get_messages_by_ticket_identifier(ticket_id)
+        return format_chat_history(messages)
+    except Exception as e:
+        print(f"Error fetching chat context for ticket {ticket_id}: {e}")
+        return "Error: Could not retrieve conversation history."
 
 
 def gemini_make_plan(ticket_id: str) -> Generator[str, None, None]:

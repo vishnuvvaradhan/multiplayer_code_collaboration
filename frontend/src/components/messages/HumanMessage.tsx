@@ -1,4 +1,5 @@
 import { getUserColor } from '@/lib/database';
+import { MarkdownRenderer } from '../MarkdownRenderer';
 
 interface HumanMessageProps {
   content: string;
@@ -8,34 +9,24 @@ interface HumanMessageProps {
   showAvatar?: boolean;
 }
 
+// Helper function to detect and highlight commands anywhere in the message
+const highlightCommands = (content: string): string => {
+  // Replace @commands with bold versions anywhere in the message
+  return content
+    .replace(/(@chat)\s+/g, '**$1** ')
+    .replace(/(@make_plan)\s+/g, '**$1** ')
+    .replace(/(@dev)\s+/g, '**$1** ')
+    // Also handle commands at the start for backward compatibility
+    .replace(/^(@chat)\s+/, '**$1** ')
+    .replace(/^(@make_plan)\s+/, '**$1** ')
+    .replace(/^(@dev)\s+/, '**$1** ');
+};
+
 export function HumanMessage({ content, author, avatar, timestamp, showAvatar = true }: HumanMessageProps) {
   const userColor = getUserColor(author);
-  
-  // Check if message starts with a command and highlight it
-  let displayContent: React.ReactNode = content;
-  
-  if (content.startsWith('@chat')) {
-    displayContent = (
-      <>
-        <span className="font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">@chat</span>
-        <span>{content.slice(5)}</span>
-      </>
-    );
-  } else if (content.startsWith('@make_plan')) {
-    displayContent = (
-      <>
-        <span className="font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">@make_plan</span>
-        <span>{content.slice(10)}</span>
-      </>
-    );
-  } else if (content.startsWith('@dev')) {
-    displayContent = (
-      <>
-        <span className="font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded">@dev</span>
-        <span>{content.slice(4)}</span>
-      </>
-    );
-  }
+
+  // Check if message contains commands and highlight them
+  const processedContent = highlightCommands(content);
   
   return (
     <div className={`px-4 hover:bg-gray-50 group transition-colors ${showAvatar ? 'py-3 border-t border-gray-100' : 'py-1'}`}>
@@ -54,7 +45,9 @@ export function HumanMessage({ content, author, avatar, timestamp, showAvatar = 
               <span className="text-xs text-gray-500">{timestamp}</span>
             </div>
           )}
-          <p className={`text-sm text-gray-800 leading-[1.5] ${showAvatar ? '' : 'ml-0'}`}>{displayContent}</p>
+          <div className={showAvatar ? '' : 'ml-0'}>
+            <MarkdownRenderer content={processedContent} />
+          </div>
         </div>
       </div>
     </div>

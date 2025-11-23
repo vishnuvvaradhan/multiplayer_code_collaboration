@@ -1,4 +1,5 @@
 import { Bot, Code } from 'lucide-react';
+import { MarkdownRenderer } from '../MarkdownRenderer';
 
 interface AgentMessageProps {
   content: string;
@@ -33,7 +34,7 @@ export function AgentMessage({ content, agent, author, timestamp, metadata }: Ag
             <span className="text-xs text-gray-600 bg-gray-200 px-1.5 py-0.5 rounded border border-gray-300">BOT</span>
             <span className="text-xs text-gray-500">{timestamp}</span>
           </div>
-          <p className="text-sm text-gray-800 leading-[1.5]">{content}</p>
+          <MarkdownRenderer content={content} />
         </div>
       </div>
     </div>

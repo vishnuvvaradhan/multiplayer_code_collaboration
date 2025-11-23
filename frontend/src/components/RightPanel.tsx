@@ -135,7 +135,7 @@ export function RightPanel({ ticketId, onClose }: RightPanelProps) {
                   message_type: 'agent',
                   content: fullPlan,
                   metadata: {
-                    agent: 'plan',
+                    agent: 'architect',
                   },
                 });
                 
