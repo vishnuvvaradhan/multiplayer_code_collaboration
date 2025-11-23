@@ -5,7 +5,7 @@ import { Plus, ChevronDown, Loader2, MoreVertical, Bell } from 'lucide-react';
 import { TicketSelectionDialog } from './TicketSelectionDialog';
 import { LinearIssue, LinearUser } from '../lib/linear';
 import { getAllTickets, getMessagesByTicketId, getUserColor, getUserInitials } from '../lib/database';
-import { Ticket } from '../lib/supabase';
+import { Ticket, getCurrentUserName } from '../lib/supabase';
 
 const statusConfig = {
   'in-progress': { color: 'bg-blue-600', label: 'In Progress' },
@@ -30,6 +30,7 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [hoveredTicketId, setHoveredTicketId] = useState<string | null>(null);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const currentUserName = getCurrentUserName();
 
   // Fetch tickets from Supabase
   useEffect(() => {
@@ -305,7 +306,7 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
         <div className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-amber-900/10 transition-colors cursor-pointer group">
           <div className="relative">
             {(() => {
-              const profileName = 'Jane Doe';
+              const profileName = currentUserName;
               const profileColor = getUserColor(profileName);
               return (
                 <div className={`w-8 h-8 rounded-full ${profileColor.bg} ${profileColor.text} flex items-center justify-center border border-gray-300 shadow-sm`}>
@@ -317,7 +318,7 @@ export function LeftSidebar({ selectedTicket, onSelectTicket, onRepositorySelect
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1">
-              <span className="text-sm font-semibold truncate" style={{ color: '#5D4037' }}>Jane Doe</span>
+              <span className="text-sm font-semibold truncate" style={{ color: '#5D4037' }}>{currentUserName}</span>
             </div>
             <span className="text-xs truncate block" style={{ color: '#8B6F47' }}>Active</span>
           </div>

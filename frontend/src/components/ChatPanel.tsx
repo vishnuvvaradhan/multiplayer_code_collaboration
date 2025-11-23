@@ -7,7 +7,7 @@ import { ArchitectPlanCard } from './messages/ArchitectPlanCard';
 import { DiffGeneratedCard } from './messages/DiffGeneratedCard';
 import { LoadingState } from './LoadingState';
 import { AIPromptBox } from './AIPromptBox';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMessages } from '@/hooks/useMessages';
 import { createMessage, formatTimestamp, getUserInitials, getUserColor, deleteMessage } from '@/lib/database';
 import { getCurrentUserName, Message } from '@/lib/supabase';
@@ -251,6 +251,50 @@ Do NOT make any code changes - just provide guidance.`;
     enabled: !!ticketDbId,
     onNewMessage: processCommandFromMessage,
   });
+
+  const filteredMessages = useMemo(() => {
+    if (!dbMessages || dbMessages.length === 0) return [];
+
+    const supersededStreamingMessageIds = new Set<string>();
+
+    for (let i = 0; i < dbMessages.length; i++) {
+      const msg = dbMessages[i];
+      if (msg.message_type === 'agent' && msg.metadata?.streaming) {
+        const streamingAgent = msg.metadata?.agent as 'architect' | 'dev' | undefined;
+        const streamingAuthor = msg.user_or_agent;
+
+        for (let j = i + 1; j < dbMessages.length; j++) {
+          const later = dbMessages[j];
+
+          // Any later architect-plan message should hide an architect "thinking" message
+          if (
+            streamingAgent === 'architect' &&
+            later.message_type === 'architect-plan'
+          ) {
+            supersededStreamingMessageIds.add(msg.id);
+            break;
+          }
+
+          if (later.message_type !== 'agent') {
+            continue;
+          }
+
+          const laterAgent = later.metadata?.agent as 'architect' | 'dev' | undefined;
+
+          const sameAuthor = later.user_or_agent === streamingAuthor;
+          const sameAgentKind =
+            !!streamingAgent && !!laterAgent && streamingAgent === laterAgent;
+
+          if (sameAuthor || sameAgentKind) {
+            supersededStreamingMessageIds.add(msg.id);
+            break;
+          }
+        }
+      }
+    }
+
+    return dbMessages.filter((m) => !supersededStreamingMessageIds.has(m.id));
+  }, [dbMessages]);
 
   // Check if user is near the bottom of the scroll container
   const checkIfNearBottom = () => {
@@ -721,11 +765,11 @@ Do NOT make any code changes - just provide guidance.`;
           {/* Messages list */}
           {loading && dbMessages.length === 0 ? (
             <LoadingState />
-          ) : dbMessages.length > 0 ? (
+          ) : filteredMessages.length > 0 ? (
             <div className="flex flex-col">
-              {dbMessages.map((message, index) => {
+              {filteredMessages.map((message, index) => {
                 const formattedTimestamp = formatTimestamp(message.timestamp);
-                const previousMessage = index > 0 ? dbMessages[index - 1] : null;
+                const previousMessage = index > 0 ? filteredMessages[index - 1] : null;
                 
                 // Calculate consecutive message count and determine if we should show avatar
                 let showAvatar = true;
