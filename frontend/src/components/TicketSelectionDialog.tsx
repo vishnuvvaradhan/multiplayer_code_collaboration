@@ -20,11 +20,13 @@ import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { toast } from 'sonner';
 import { createTicketWorkspace } from '../lib/backend-api';
-import { 
-  GitHubRepository, 
-  getGitHubOAuthUrl, 
-  fetchGitHubRepositories, 
-  getGitHubToken, 
+import { AUTHORIZED_USERS, getAuthorizedUserNames, AuthorizedUser } from '../lib/authorized-users';
+import { getUserColor, getUserInitials } from '../lib/database';
+import {
+  GitHubRepository,
+  getGitHubOAuthUrl,
+  fetchGitHubRepositories,
+  getGitHubToken,
   setGitHubToken,
   getGitHubUser,
   removeGitHubToken
@@ -36,6 +38,22 @@ interface TicketSelectionDialogProps {
   onSelectTicket: (ticket: LinearIssue, selectedUsers: LinearUser[], repository: { fullName: string; url: string; name: string }) => void;
 }
 
+// Local authorized users for this dialog only (includes global + Tiger Shinoda)
+const DIALOG_AUTHORIZED_USERS: AuthorizedUser[] = [
+  ...AUTHORIZED_USERS,
+  {
+    id: "tiger-shinoda",
+    name: "Tiger Shinoda",
+    displayName: "Tiger Shinoda",
+    email: "tiger@company.com",
+    role: "Developer"
+  }
+];
+
+const getDialogAuthorizedUserNames = (): string[] => {
+  return DIALOG_AUTHORIZED_USERS.map(user => user.displayName);
+};
+
 export function TicketSelectionDialog({
   open,
   onOpenChange,
@@ -43,12 +61,12 @@ export function TicketSelectionDialog({
 }: TicketSelectionDialogProps) {
   const [tickets, setTickets] = useState<LinearIssue[]>([]);
   const [users, setUsers] = useState<LinearUser[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [repositories, setRepositories] = useState<GitHubRepository[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTicket, setSelectedTicket] = useState<LinearIssue | null>(null);
-  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [selectedRepository, setSelectedRepository] = useState<string>('');
   const [step, setStep] = useState<'tickets' | 'users' | 'repository'>('tickets');
   const [filters, setFilters] = useState<{
@@ -71,7 +89,6 @@ export function TicketSelectionDialog({
   const [newTicketDescription, setNewTicketDescription] = useState('');
   const [newTicketPriority, setNewTicketPriority] = useState<number>(0);
   const [newTicketTeam, setNewTicketTeam] = useState<string>('');
-  const [newTicketAssignee, setNewTicketAssignee] = useState<string>('');
   const [newTicketLabels, setNewTicketLabels] = useState<Set<string>>(new Set());
   const [newTicketDueDate, setNewTicketDueDate] = useState<string>('');
   const [newTicketEstimate, setNewTicketEstimate] = useState<number>(0);
@@ -159,12 +176,12 @@ export function TicketSelectionDialog({
       setNewTicketDescription('');
       setNewTicketPriority(0);
       setNewTicketTeam(teams.length > 0 ? teams[0].key : '');
-      setNewTicketAssignee('');
       setNewTicketLabels(new Set());
       setNewTicketDueDate('');
       setNewTicketEstimate(0);
     }
   }, [open, checkGitHubConnection]);
+
 
   // Check for GitHub token in URL (from OAuth callback)
   useEffect(() => {
@@ -262,14 +279,17 @@ export function TicketSelectionDialog({
   };
 
   const handleUserToggle = (userId: string) => {
-    const newSelected = new Set(selectedUsers);
-    if (newSelected.has(userId)) {
-      newSelected.delete(userId);
-    } else {
-      newSelected.add(userId);
-    }
-    setSelectedUsers(newSelected);
+    setSelectedUsers((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
   };
+
 
   const handleConnectGitHub = () => {
     try {
@@ -282,13 +302,27 @@ export function TicketSelectionDialog({
 
   const handleCreate = async () => {
     if (selectedTicket && selectedRepository) {
-      const selectedUsersList = users.filter((user) =>
+      // Get selected authorized users from the dialog
+      const selectedAuthorizedUsers = DIALOG_AUTHORIZED_USERS.filter((user) => 
         selectedUsers.has(user.id)
       );
-      
+
+      // Convert to LinearUser format for compatibility
+      const finalUsers: LinearUser[] = selectedAuthorizedUsers.map((user) => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        displayName: user.displayName,
+        avatarUrl: undefined,
+        active: true,
+      }));
+
+      // People stored on the ticket: unique display names of all final users
+      const people = Array.from(new Set(finalUsers.map((u) => u.displayName)));
+
       // Find the repository object to get full details
       const repo = repositories.find((r) => r.full_name === selectedRepository);
-      
+
       const repositoryInfo = repo ? {
         fullName: repo.full_name,
         url: repo.html_url,
@@ -298,7 +332,7 @@ export function TicketSelectionDialog({
         url: `https://github.com/${selectedRepository}`,
         name: selectedRepository.split('/')[1] || selectedRepository,
       };
-      
+
       try {
         // Create ticket in Supabase
         const dbTicket = await createTicket({
@@ -307,7 +341,7 @@ export function TicketSelectionDialog({
           description: selectedTicket.description || undefined,
           priority: selectedTicket.priority || undefined,
           github_url: repositoryInfo.url,
-          people: selectedUsersList.map(u => u.displayName),
+          people,
         });
 
         // Create initial system message
@@ -347,7 +381,7 @@ export function TicketSelectionDialog({
           description: `${selectedTicket.identifier}: ${selectedTicket.title}`,
         });
         
-        onSelectTicket(selectedTicket, selectedUsersList, repositoryInfo);
+        onSelectTicket(selectedTicket, finalUsers, repositoryInfo);
         onOpenChange(false);
       } catch (error) {
         console.error('Error creating group:', error);
@@ -379,7 +413,7 @@ export function TicketSelectionDialog({
         description: newTicketDescription || undefined,
         priority: newTicketPriority || undefined,
         teamKey: newTicketTeam || undefined,
-        assigneeId: newTicketAssignee || undefined,
+        assigneeId: undefined,
         labelIds: newTicketLabels.size > 0 ? Array.from(newTicketLabels) : undefined,
         dueDate: newTicketDueDate || undefined,
         estimate: newTicketEstimate > 0 ? newTicketEstimate : undefined,
@@ -404,7 +438,6 @@ export function TicketSelectionDialog({
       setNewTicketTitle('');
       setNewTicketDescription('');
       setNewTicketPriority(0);
-      setNewTicketAssignee('');
       setNewTicketLabels(new Set());
       setNewTicketDueDate('');
       setNewTicketEstimate(0);
@@ -525,9 +558,7 @@ export function TicketSelectionDialog({
           <DialogDescription>
             {step === 'tickets'
               ? 'Choose an already created ticket, or + New to create a new one.'
-              : step === 'repository'
-              ? `Selected: ${selectedTicket?.identifier} - ${selectedTicket?.title}`
-              : `Repository: ${selectedRepository}. Select team members to collaborate.`}
+              : `Selected: ${selectedTicket?.identifier} - ${selectedTicket?.title}. Choose repository to create group chat.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -1045,12 +1076,9 @@ export function TicketSelectionDialog({
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-                {users.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    No users available
-                  </div>
-                ) : (
-                  users.map((user) => (
+                {DIALOG_AUTHORIZED_USERS.map((user) => {
+                  const userColor = getUserColor(user.displayName);
+                  return (
                     <label
                       key={user.id}
                       className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition-all"
@@ -1060,14 +1088,8 @@ export function TicketSelectionDialog({
                         onCheckedChange={() => handleUserToggle(user.id)}
                       />
                       <Avatar className="w-8 h-8">
-                        <AvatarImage src={user.avatarUrl} alt={user.displayName} />
-                        <AvatarFallback>
-                          {user.displayName
-                            .split(' ')
-                            .map((n) => n[0])
-                            .join('')
-                            .toUpperCase()
-                            .slice(0, 2)}
+                        <AvatarFallback className={`${userColor.bg} ${userColor.text} text-xs font-semibold border border-gray-200`}>
+                          {getUserInitials(user.displayName)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
@@ -1077,8 +1099,8 @@ export function TicketSelectionDialog({
                         <p className="text-xs text-gray-500 truncate">{user.email}</p>
                       </div>
                     </label>
-                  ))
-                )}
+                  );
+                })}
               </div>
             </>
           )}
@@ -1228,47 +1250,6 @@ export function TicketSelectionDialog({
                 </div>
               </div>
 
-              {/* Assignee Selection */}
-              {users.length > 0 && (
-                <div className="space-y-2">
-                  <Label>Assignee</Label>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setNewTicketAssignee('')}
-                      disabled={creating}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                        !newTicketAssignee
-                          ? 'bg-gray-600 text-white shadow-sm'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      Unassigned
-                    </button>
-                    {users.slice(0, 8).map((user) => (
-                      <button
-                        key={user.id}
-                        type="button"
-                        onClick={() => setNewTicketAssignee(user.id)}
-                        disabled={creating}
-                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 ${
-                          newTicketAssignee === user.id
-                            ? 'bg-indigo-600 text-white shadow-sm'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        <Avatar className="w-4 h-4">
-                          <AvatarImage src={user.avatarUrl} />
-                          <AvatarFallback className="text-[8px]">
-                            {user.displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                          </AvatarFallback>
-                        </Avatar>
-                        {user.displayName.split(' ')[0]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* Labels Selection */}
               {labels.length > 0 && (

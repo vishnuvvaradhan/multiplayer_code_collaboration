@@ -32,14 +32,6 @@ export function ArchitectPlanCard({ timestamp, content }: ArchitectPlanCardProps
                 <p className="text-sm text-gray-600 italic">Plan content loading...</p>
               )}
             </div>
-
-            {content && (
-              <div className="pt-3 border-t border-gray-200 mt-4">
-                <button className="text-sm text-blue-600 hover:text-blue-700 hover:underline">
-                  View full plan in details panel →
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </div>
