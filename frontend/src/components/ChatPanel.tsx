@@ -1,4 +1,4 @@
-import { Hash, ChevronDown, Users, Pin, Search, Info, Smile, Paperclip, AtSign, Send, Github } from 'lucide-react';
+import { Hash, ChevronDown, Users, Pin, Search, Info, Github } from 'lucide-react';
 import { getAllTickets } from '@/lib/database';
 import { HumanMessage } from './messages/HumanMessage';
 import { AgentMessage } from './messages/AgentMessage';
@@ -7,6 +7,7 @@ import { ArchitectPlanCard } from './messages/ArchitectPlanCard';
 import { DiffGeneratedCard } from './messages/DiffGeneratedCard';
 import { EmptyState } from './EmptyState';
 import { LoadingState } from './LoadingState';
+import { AIPromptBox } from './AIPromptBox';
 import { useState, useEffect, useRef } from 'react';
 import { useMessages } from '@/hooks/useMessages';
 import { createMessage, formatTimestamp, getUserInitials, getUserColor } from '@/lib/database';
@@ -288,7 +289,14 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
           
           {/* Ticket Dropdown */}
           {isTicketDropdownOpen && (
-            <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-96 overflow-y-auto">
+            <div 
+              className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto dropdown-enter"
+              style={{
+                backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
+                boxShadow: '0 10px 40px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.05)',
+              }}
+            >
               <div className="p-2">
                 {availableTickets.length === 0 ? (
                   <div className="px-3 py-2 text-sm text-gray-500">No tickets available</div>
@@ -428,17 +436,18 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
               );
             }
 
-                if (message.message_type === 'agent') {
-              return (
-                <AgentMessage
-                      key={message.id}
-                  content={message.content || ''}
-                      agent={message.metadata?.agent || 'dev'}
-                      author={message.user_or_agent}
-                      timestamp={formattedTimestamp}
-                />
-              );
-            }
+                    if (message.message_type === 'agent') {
+                      return (
+                        <AgentMessage
+                          key={message.id}
+                          content={message.content || ''}
+                          agent={message.metadata?.agent || 'dev'}
+                          author={message.user_or_agent}
+                          timestamp={formattedTimestamp}
+                          metadata={message.metadata || undefined}
+                        />
+                      );
+                    }
 
                 if (message.message_type === 'architect-plan') {
                   return <ArchitectPlanCard key={message.id} timestamp={formattedTimestamp} />;
@@ -461,7 +470,7 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
                 {/* Ticket Information */}
                 <div className="mb-8 pb-6 border-b border-gray-200">
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-slate-500 flex items-center justify-center flex-shrink-0">
+                    <div className="w-10 h-10 rounded-lg bg-slate-500 flex items-center justify-center shrink-0">
                       <Hash className="w-5 h-5 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -478,8 +487,8 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
                         </div>
                       )}
                     </div>
-                  </div>
-                </div>
+        </div>
+      </div>
 
                 {/* Participants Section */}
                 <div>
@@ -532,129 +541,36 @@ export function ChatPanel({ ticketId, onToggleRightPanel, isRightPanelOpen, repo
         </div>
       </div>
 
-      {/* Input Bar - Liquid Glass */}
+      {/* AI Prompt Box */}
       <div 
-        className="px-4 pb-4 pt-2"
+        className="pt-2"
         style={{
-          background: 'linear-gradient(to top, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.4) 100%)',
+          background: 'linear-gradient(to top, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.6) 100%)',
           backdropFilter: 'blur(20px) saturate(180%)',
           WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-          borderTop: '1px solid rgba(255, 255, 255, 0.3)',
+          borderTop: '1px solid rgba(0, 0, 0, 0.05)',
         }}
       >
-        <div 
-          className="rounded-lg overflow-hidden focus-within:shadow-lg transition-all"
-          style={{
-            background: 'rgba(255, 255, 255, 0.25)',
-            backdropFilter: 'blur(10px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(10px) saturate(180%)',
-            border: '1px solid rgba(255, 255, 255, 0.3)',
-            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
+        <AIPromptBox
+          value={inputValue}
+          onChange={setInputValue}
+          onSend={handleSend}
+          sending={sending}
+          placeholder="Write a message..."
+          participants={participants}
+          onAttachFile={(file) => {
+            toast.info(`File attached: ${file.name}`);
+            // TODO: Implement file upload logic
           }}
-        >
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Write a message..."
-            className="w-full px-3 py-2.5 text-sm outline-none text-gray-900 placeholder-gray-500"
-            style={{
-              background: 'transparent',
-            }}
-          />
-          <div 
-            className="flex items-center justify-between px-2 pb-2"
-            style={{
-              borderTop: '1px solid rgba(255, 255, 255, 0.2)',
-            }}
-          >
-            <div className="flex items-center gap-1">
-              <button 
-                className="p-1.5 rounded transition-all" 
-                title="Attach files"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.2)',
-                  backdropFilter: 'blur(10px)',
-                  WebkitBackdropFilter: 'blur(10px)',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.4)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
-                }}
-              >
-                <Paperclip className="w-4 h-4 text-gray-700" />
-              </button>
-              <button 
-                className="p-1.5 rounded transition-all" 
-                title="Add emoji"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.2)',
-                  backdropFilter: 'blur(10px)',
-                  WebkitBackdropFilter: 'blur(10px)',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.4)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
-                }}
-              >
-                <Smile className="w-4 h-4 text-gray-700" />
-              </button>
-              <button 
-                className="p-1.5 rounded transition-all" 
-                title="Mention"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.2)',
-                  backdropFilter: 'blur(10px)',
-                  WebkitBackdropFilter: 'blur(10px)',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.4)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
-                }}
-              >
-                <AtSign className="w-4 h-4 text-gray-700" />
-              </button>
-            </div>
-            <button
-              onClick={handleSend}
-              disabled={!inputValue.trim() || sending}
-              className="p-2 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
-              style={{
-                background: sending || !inputValue.trim() 
-                  ? 'rgba(217, 119, 6, 0.5)' 
-                  : 'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
-                backdropFilter: 'blur(10px) saturate(180%)',
-                WebkitBackdropFilter: 'blur(10px) saturate(180%)',
-                border: '1px solid rgba(255, 255, 255, 0.3)',
-                boxShadow: !inputValue.trim() || sending
-                  ? 'none'
-                  : '0 4px 15px rgba(217, 119, 6, 0.4), 0 0 20px rgba(217, 119, 6, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)',
-              }}
-              onMouseEnter={(e) => {
-                if (!sending && inputValue.trim()) {
-                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(217, 119, 6, 0.6), 0 0 30px rgba(217, 119, 6, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.4)';
-                  e.currentTarget.style.transform = 'scale(1.02)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!sending && inputValue.trim()) {
-                  e.currentTarget.style.boxShadow = '0 4px 15px rgba(217, 119, 6, 0.4), 0 0 20px rgba(217, 119, 6, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
-                  e.currentTarget.style.transform = 'scale(1)';
-                }
-              }}
-              title={sending ? 'Sending...' : 'Send'}
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+          onMention={(userId) => {
+            toast.info(`Mentioned: ${userId}`);
+          }}
+          onSearch={() => {
+            // TODO: Implement search functionality
+            toast.info('Search functionality coming soon');
+          }}
+          maxLength={2000}
+        />
       </div>
     </div>
   );
