@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   try {
     const response = await fetch('https://api.github.com/user', {
       headers: {
-        'Authorization': `token ${token}`,
+        'Authorization': `Bearer ${token}`,
         'Accept': 'application/vnd.github.v3+json',
         'User-Agent': 'Relay-App',
       },

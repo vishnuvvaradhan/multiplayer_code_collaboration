@@ -183,13 +183,30 @@ export function TicketSelectionDialog({
   }, [open, checkGitHubConnection]);
 
 
-  // Check for GitHub token in URL (from OAuth callback)
+  // Check for GitHub token in URL (from OAuth callback) - fallback if main page didn't catch it
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const githubToken = urlParams.get('github_token');
+      const error = urlParams.get('error');
       
-      if (githubToken) {
+      if (error && !githubToken) {
+        // Only show error if we don't have a token (main page should have handled it, but just in case)
+        const errorMessages: Record<string, string> = {
+          'github_not_configured': 'GitHub OAuth is not configured. Please set GITHUB_CLIENT_SECRET in your .env.local file.',
+          'no_code': 'GitHub authorization was cancelled or failed.',
+          'no_token': 'Failed to receive access token from GitHub.',
+          'oauth_failed': 'GitHub OAuth authentication failed. Please try again.',
+        };
+        
+        toast.error('GitHub Connection Failed', {
+          description: errorMessages[error] || `Error: ${error}`,
+          duration: 5000,
+        });
+        
+        // Clean up URL
+        window.history.replaceState({}, '', window.location.pathname);
+      } else if (githubToken) {
         setGitHubToken(githubToken);
         // Remove token from URL
         const newUrl = window.location.pathname;
@@ -295,8 +312,12 @@ export function TicketSelectionDialog({
     try {
       const oauthUrl = getGitHubOAuthUrl();
       window.location.href = oauthUrl;
-    } catch {
-      toast.error('GitHub OAuth not configured. Please set NEXT_PUBLIC_GITHUB_CLIENT_ID');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'GitHub OAuth not configured';
+      toast.error('Cannot Connect to GitHub', {
+        description: errorMessage + '. Please check your .env.local file and ensure NEXT_PUBLIC_GITHUB_CLIENT_ID is set.',
+        duration: 5000,
+      });
     }
   };
 

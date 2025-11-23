@@ -22,6 +22,10 @@ export async function GET(request: NextRequest) {
   }
 
   if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
+    console.error('GitHub OAuth configuration missing:', {
+      hasClientId: !!GITHUB_CLIENT_ID,
+      hasClientSecret: !!GITHUB_CLIENT_SECRET,
+    });
     return NextResponse.redirect(
       new URL('/?error=github_not_configured', request.url)
     );
@@ -45,6 +49,7 @@ export async function GET(request: NextRequest) {
     const tokenData = await tokenResponse.json();
 
     if (tokenData.error) {
+      console.error('GitHub OAuth token exchange error:', tokenData);
       return NextResponse.redirect(
         new URL(`/?error=${encodeURIComponent(tokenData.error_description || tokenData.error)}`, request.url)
       );

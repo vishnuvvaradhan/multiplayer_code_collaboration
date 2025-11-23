@@ -48,6 +48,8 @@ Each developer needs to create their own GitHub OAuth App:
 - Each developer must create their own GitHub OAuth App (Client IDs are per-app)
 - The Client ID is safe to expose (it's public in OAuth flows)
 - The Client Secret must be kept private and never committed
+- **Both** `NEXT_PUBLIC_GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` are required for GitHub auth to work
+- After adding/updating environment variables, restart your development server
 
 Then, run the development server:
 
@@ -114,6 +116,30 @@ To learn more about the technologies used:
 - [React Documentation](https://react.dev)
 - [Tailwind CSS](https://tailwindcss.com)
 - [Radix UI](https://www.radix-ui.com)
+
+## Troubleshooting
+
+### GitHub Authentication Not Working
+
+If GitHub authentication fails, check the following:
+
+1. **Missing Client Secret**: Ensure `GITHUB_CLIENT_SECRET` is set in `.env.local` (not just `NEXT_PUBLIC_GITHUB_CLIENT_ID`)
+   - The error message will show "GitHub OAuth is not configured" if this is missing
+   - Generate a new Client Secret from your GitHub OAuth App settings if needed
+
+2. **Incorrect Callback URL**: Verify the Authorization callback URL in your GitHub OAuth App matches exactly:
+   - Development: `http://localhost:3000/api/auth/github/callback`
+   - Production: `https://yourdomain.com/api/auth/github/callback`
+
+3. **Server Not Restarted**: After updating `.env.local`, you must restart the Next.js dev server:
+   ```bash
+   # Stop the server (Ctrl+C) and restart
+   npm run dev
+   ```
+
+4. **Check Browser Console**: Open browser DevTools and check for error messages in the console
+
+5. **Check Server Logs**: Look for error messages in your terminal where the Next.js server is running
 
 ## Contributing
 

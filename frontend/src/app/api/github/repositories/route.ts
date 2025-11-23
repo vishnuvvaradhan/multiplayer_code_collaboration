@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     // Fetch user's repositories from GitHub API
     const response = await fetch('https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator', {
       headers: {
-        'Authorization': `token ${token}`,
+        'Authorization': `Bearer ${token}`,
         'Accept': 'application/vnd.github.v3+json',
         'User-Agent': 'Relay-App',
       },
