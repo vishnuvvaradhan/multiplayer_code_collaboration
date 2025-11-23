@@ -19,6 +19,7 @@ import os
 import re
 import json
 import subprocess
+import time
 from typing import Generator, Dict
 
 TICKETS_ROOT = "./tickets"          # Root directory for all ticket repos
@@ -51,7 +52,7 @@ def stream_subprocess(cmd, cwd: str) -> Generator[str, None, None]:
 # -----------------------------------------------------------------------------
 # Session management (real UUID sessions)
 # -----------------------------------------------------------------------------
-def _parse_latest_session_uuid(output: str) -> str:
+def _parse_latest_session_uuid(stdout: str, stderr: str) -> str:
     """
     Parse `gemini --list-sessions` text output and return the last session's UUID.
 
@@ -60,11 +61,15 @@ def _parse_latest_session_uuid(output: str) -> str:
       "  5. session_test (Just now) [5a249b28-9b10-499f-94f3-89cca14dc7c5]"
 
     We scan all lines and keep the last UUID we see.
+    Note: The output may be in stdout OR stderr depending on the CLI version.
     """
     uuid = None
     uuid_pattern = re.compile(r"\[([0-9a-fA-F-]{36})\]")
+    
+    # Check both stdout and stderr
+    combined_output = stdout + stderr
 
-    for line in output.splitlines():
+    for line in combined_output.splitlines():
         match = uuid_pattern.search(line)
         if match:
             uuid = match.group(1)
@@ -111,6 +116,9 @@ def get_or_create_session(ticket_id: str) -> str:
         capture_output=True,
         text=True,
     )
+    
+    # Wait for session to be registered
+    time.sleep(1)
 
     # Step (b): list sessions
     list_proc = subprocess.run(
@@ -124,8 +132,8 @@ def get_or_create_session(ticket_id: str) -> str:
             f"Failed to list sessions for ticket '{ticket_id}': {list_proc.stderr}"
         )
 
-    # Step (c): parse latest UUID
-    session_uuid = _parse_latest_session_uuid(list_proc.stdout)
+    # Step (c): parse latest UUID (check both stdout and stderr)
+    session_uuid = _parse_latest_session_uuid(list_proc.stdout, list_proc.stderr)
 
     print(session_uuid)
 
@@ -200,7 +208,7 @@ def get_chat_context(ticket_id: str) -> str:
     For now, returns an empty string. In the future, this should return
     a summarized chat history string for the given ticket_id.
     """
-    return ""
+    return "Generate a new front end. All we need is to play a little with the html file! Make it blue"
 
 
 def gemini_make_plan(ticket_id: str) -> Generator[str, None, None]:
@@ -208,7 +216,8 @@ def gemini_make_plan(ticket_id: str) -> Generator[str, None, None]:
     Handle @plan:
     - Make sure plan.md exists.
     - Ask Gemini (within the same session) to create or update plan.md.
-    - We rely on Gemini's tools to open/edit that file in the workspace.
+    - Capture Gemini's output and write it to plan.md.
+    - Also yield the output for SSE streaming.
     """
     try:
         workspace = _ensure_workspace(ticket_id)
@@ -218,23 +227,40 @@ def gemini_make_plan(ticket_id: str) -> Generator[str, None, None]:
 
     plan_path = os.path.join(workspace, "plan.md")
 
-    # Ensure plan.md exists so Gemini has a target file
-    if not os.path.exists(plan_path):
-        with open(plan_path, "w") as f:
-            f.write("# Implementation Plan\n\n")
-
     context = get_chat_context(ticket_id)
 
     prompt_text = (
-        "You are the planning agent for this ticket.\n"
-        "Your job is to write or update `plan.md` in this repository with a clear,\n"
-        "step-by-step implementation plan for the current ticket.\n"
-        "- Do NOT modify any source code files in this step.\n"
-        "- Only create or update `plan.md`.\n\n"
-        f"Here is some (optional) prior chat context:\n{context}\n"
+        "You are a planning agent. Create an implementation plan for this ticket.\n\n"
+        "IMPORTANT: Do NOT use any tools. Do NOT try to write files. "
+        "Just respond with plain text markdown content that I will save.\n\n"
+        f"Ticket requirements:\n{context}\n\n"
+        "Please provide a detailed plan with:\n"
+        "1. Overview/Goal\n"
+        "2. Step-by-step tasks\n"
+        "3. Files to modify/create\n"
+        "4. Implementation notes\n\n"
+        "Start your response with the plan content now:"
     )
 
-    yield from run_gemini_prompt(ticket_id, prompt_text)
+    # Collect all output from Gemini AND write incrementally to plan.md
+    collected_output = []
+    
+    # Open the file for writing as we collect (this will overwrite any existing file)
+    with open(plan_path, "w") as plan_file:
+        plan_file.write("# Implementation Plan\n\n")
+        plan_file.flush()  # Ensure header is written immediately
+        
+        for line in run_gemini_prompt(ticket_id, prompt_text):
+            collected_output.append(line)
+            # Write each line to the file as we go
+            plan_file.write(line)
+            plan_file.flush()  # Flush after each line to ensure it's written
+            yield line  # Stream to SSE
+    
+    # File is now written! Calculate stats
+    full_plan = "".join(collected_output)
+    
+    yield f"\n✅ Plan written to plan.md ({len(full_plan)} characters)\n"
 
 
 # -----------------------------------------------------------------------------
@@ -246,13 +272,10 @@ def gemini_dev(ticket_id: str) -> Generator[str, None, None]:
 
     We:
       - Ensure plan.md exists.
-      - Ask Gemini (same session) to read plan.md and apply code changes.
-      - Then we git add/commit/push and create/update a GitHub PR via `gh`.
-
-    NOTE:
-      This assumes you trust Gemini to use its internal tools to edit files.
-      For a more deterministic approach, you could instead have Gemini produce
-      a unified diff and apply it yourself (git apply) before committing.
+      - Ask Gemini to generate structured JSON edits based on plan.md.
+      - Apply each edit using search/replace.
+      - Save the changes JSON for reference.
+      - Then git add/commit/push and create/update a GitHub PR via `gh`.
     """
     try:
         workspace = _ensure_workspace(ticket_id)
@@ -265,24 +288,116 @@ def gemini_dev(ticket_id: str) -> Generator[str, None, None]:
         yield "Error: plan.md not found. Run @plan first.\n"
         return
 
+    changes_filename = f"{ticket_id}_changes.json"
+    changes_path = os.path.join(workspace, changes_filename)
+
     prompt_text = (
         "You are the development agent for this ticket.\n"
-        "Read `plan.md` in this repository and implement the plan by editing the\n"
-        "appropriate source files.\n"
-        "- Make all necessary code changes to fully implement the plan.\n"
-        "- Do NOT modify `plan.md` itself in this step.\n"
-        "- You may run tests or other commands if needed, but keep changes focused.\n"
+        "Read `plan.md` in this repository and generate structured edits to implement the plan.\n\n"
+        "CRITICAL REQUIREMENTS:\n"
+        "- Output ONLY valid JSON (no markdown, no code fences, no explanations)\n"
+        "- Use this exact structure:\n"
+        "{\n"
+        '  "files": [\n'
+        "    {\n"
+        '      "path": "relative/path/to/file.ext",\n'
+        '      "changes": [\n'
+        "        {\n"
+        '          "search": "exact text to find (can be multiple lines)",\n'
+        '          "replace": "exact text to replace with (can be multiple lines)"\n'
+        "        }\n"
+        "      ]\n"
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        "IMPORTANT:\n"
+        "- Each 'search' string must be unique and match EXACTLY (including whitespace)\n"
+        "- Include enough context in 'search' to make it unique (5-10 lines)\n"
+        "- 'replace' should be the complete replacement text\n"
+        "- Use \\n for newlines in JSON strings\n"
+        "- Do NOT modify `plan.md` itself\n"
+        "- Output ONLY the JSON, nothing else\n\n"
+        "Generate the changes JSON now:"
     )
 
-    # Let Gemini attempt to edit files via its tools inside this session
-    yield from run_gemini_prompt(ticket_id, prompt_text)
+    # Collect the JSON output from Gemini
+    collected_output = []
+    
+    for line in run_gemini_prompt(ticket_id, prompt_text):
+        collected_output.append(line)
+        yield line  # Stream to SSE
 
-    # After Gemini finishes, we stage and commit all changes
+    json_content = "".join(collected_output).strip()
+    
+    # Clean up - remove markdown code fences if present
+    if json_content.startswith("```json"):
+        json_content = json_content[7:].lstrip()
+    elif json_content.startswith("```"):
+        json_content = json_content[3:].lstrip()
+    
+    if json_content.endswith("```"):
+        json_content = json_content[:-3].rstrip()
+    
+    # Parse the JSON
+    try:
+        changes_data = json.loads(json_content)
+    except json.JSONDecodeError as e:
+        yield f"\n❌ Failed to parse JSON: {e}\n"
+        yield "Saving raw output for debugging...\n"
+        with open(changes_path, "w") as f:
+            f.write(json_content)
+        return
+    
+    # Save the changes JSON for reference
+    with open(changes_path, "w") as f:
+        json.dump(changes_data, f, indent=2)
+    
+    yield f"\n✅ Changes JSON generated: {changes_filename}\n"
+    
+    # Apply each change
+    files_changed = 0
+    total_changes = 0
+    
+    for file_entry in changes_data.get("files", []):
+        file_path = os.path.join(workspace, file_entry["path"])
+        
+        if not os.path.exists(file_path):
+            yield f"⚠️  File not found: {file_entry['path']}, skipping...\n"
+            continue
+        
+        # Read the file
+        with open(file_path, "r") as f:
+            content = f.read()
+        
+        original_content = content
+        changes_applied = 0
+        
+        # Apply each change
+        for change in file_entry.get("changes", []):
+            search_text = change.get("search", "")
+            replace_text = change.get("replace", "")
+            
+            if search_text in content:
+                content = content.replace(search_text, replace_text, 1)  # Replace only first occurrence
+                changes_applied += 1
+                total_changes += 1
+            else:
+                yield f"⚠️  Search text not found in {file_entry['path']}, skipping change...\n"
+        
+        # Write back if changes were made
+        if content != original_content:
+            with open(file_path, "w") as f:
+                f.write(content)
+            files_changed += 1
+            yield f"✅ Applied {changes_applied} change(s) to {file_entry['path']}\n"
+    
+    yield f"\n✅ Total: {total_changes} changes applied across {files_changed} file(s)\n"
+
+    # Stage all changes including the changes JSON
     subprocess.run(["git", "add", "."], cwd=workspace)
     subprocess.run(["git", "commit", "-m", "AI-generated implementation"], cwd=workspace)
 
     yield "Changes committed.\n"
-
 
     branch_name = f"ticket_{ticket_id}"
     subprocess.run(
