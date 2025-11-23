@@ -1,4 +1,11 @@
 import { useState, useEffect } from 'react';
+import { X, Check, FileCode, GitPullRequest, Clock, Settings, Hash, Users, Github, Calendar, Tag } from 'lucide-react';
+import { DiffView } from './DiffView';
+import { PRView } from './PRView';
+import { getUserColor, getUserInitials, getTicketByIdentifier, deleteTicket, getAllTickets } from '@/lib/database';
+import { Ticket } from '@/lib/supabase';
+import { HoldToDeleteButton } from './HoldToDeleteButton';
+import { toast } from 'sonner';
 import { X, Check, FileCode, GitPullRequest, Clock, Loader2, FileText } from 'lucide-react';
 import { DiffView } from './DiffView';
 import { PRView } from './PRView';
@@ -10,12 +17,51 @@ import { Button } from './ui/button';
 interface RightPanelProps {
   ticketId: string;
   onClose: () => void;
+  onTicketDeleted?: () => void;
 }
 
-type Tab = 'plan' | 'changes' | 'pr';
+type Tab = 'plan' | 'changes' | 'pr' | 'settings';
 
-export function RightPanel({ ticketId, onClose }: RightPanelProps) {
+export function RightPanel({ ticketId, onClose, onTicketDeleted }: RightPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>('plan');
+  const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (ticketId) {
+      setLoading(true);
+      getTicketByIdentifier(ticketId)
+        .then((data) => {
+          setTicket(data);
+          setLoading(false);
+        })
+        .catch((error) => {
+          console.error('Error fetching ticket:', error);
+          setLoading(false);
+        });
+    } else {
+      setTicket(null);
+      setLoading(false);
+    }
+  }, [ticketId]);
+
+  const handleDelete = async () => {
+    if (!ticket) return;
+
+    try {
+      await deleteTicket(ticket.id);
+      toast.success('Ticket deleted successfully');
+      if (onTicketDeleted) {
+        onTicketDeleted();
+      }
+      onClose();
+    } catch (error) {
+      console.error('Error deleting ticket:', error);
+      toast.error('Failed to delete ticket', {
+        description: error instanceof Error ? error.message : 'Please try again',
+      });
+    }
+  };
   const [planExists, setPlanExists] = useState(false);
   const [prExists, setPrExists] = useState(false);
   const [prLink, setPrLink] = useState<string | undefined>(undefined);
@@ -76,6 +122,7 @@ export function RightPanel({ ticketId, onClose }: RightPanelProps) {
             { id: 'plan', label: 'Plan' },
             { id: 'changes', label: 'Changes' },
             { id: 'pr', label: 'PR' },
+            { id: 'settings', label: 'Settings' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -97,6 +144,10 @@ export function RightPanel({ ticketId, onClose }: RightPanelProps) {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#F5F1EB' }}>
+        {activeTab === 'plan' && <PlanTab />}
+        {activeTab === 'changes' && <DiffView />}
+        {activeTab === 'pr' && <PRView />}
+        {activeTab === 'settings' && <SettingsTab ticket={ticket} loading={loading} onDelete={handleDelete} />}
         {activeTab === 'plan' && (
           <PlanTab 
             ticketId={ticketId}
@@ -309,15 +360,15 @@ function PlanTab({ ticketId, ticketDbId, planExists, generating, onGeneratePlan 
             <h4 className="text-xs text-gray-700 mb-2 uppercase tracking-wide">Acceptance Criteria</h4>
             <ul className="space-y-1.5">
               <li className="text-sm text-gray-800 flex items-start gap-2">
-                <Check className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                <Check className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
                 Invalid cards show inline errors
               </li>
               <li className="text-sm text-gray-800 flex items-start gap-2">
-                <Check className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                <Check className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
                 Error messages are specific and actionable
               </li>
               <li className="text-sm text-gray-800 flex items-start gap-2">
-                <Check className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                <Check className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
                 Validation works on blur and submit
               </li>
             </ul>
@@ -393,6 +444,142 @@ function PlanTab({ ticketId, ticketDbId, planExists, generating, onGeneratePlan 
           <Check className="w-4 h-4" />
           Approve Plan
         </button>
+      </div>
+    </div>
+  );
+}
+
+interface SettingsTabProps {
+  ticket: Ticket | null;
+  loading: boolean;
+  onDelete: () => void;
+}
+
+function SettingsTab({ ticket, loading, onDelete }: SettingsTabProps) {
+  if (loading) {
+    return (
+      <div className="p-4 flex items-center justify-center">
+        <div className="text-sm text-gray-600">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!ticket) {
+    return (
+      <div className="p-4">
+        <div className="bg-white border border-gray-300 rounded-md p-4 shadow-sm">
+          <p className="text-sm text-gray-600">No ticket selected</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 space-y-4">
+      {/* Ticket Information */}
+      <div className="bg-white border border-gray-300 rounded-md p-4 shadow-sm">
+        <h3 className="text-gray-900 font-semibold mb-4">Ticket Information</h3>
+        
+        <div className="space-y-3">
+          <div className="flex items-start gap-3">
+            <Hash className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-gray-600 mb-1">Identifier</div>
+              <div className="text-sm text-gray-900 font-medium">{ticket.ticket_identifier}</div>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <FileCode className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-gray-600 mb-1">Name</div>
+              <div className="text-sm text-gray-900 font-medium">{ticket.ticket_name}</div>
+            </div>
+          </div>
+
+          {ticket.description && (
+            <div className="flex items-start gap-3">
+              <FileCode className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-gray-600 mb-1">Description</div>
+                <div className="text-sm text-gray-900">{ticket.description}</div>
+              </div>
+            </div>
+          )}
+
+          {ticket.github_url && (
+            <div className="flex items-start gap-3">
+              <Github className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-gray-600 mb-1">Repository</div>
+                <a
+                  href={ticket.github_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-600 hover:underline break-all"
+                >
+                  {ticket.github_url}
+                </a>
+              </div>
+            </div>
+          )}
+
+          {ticket.priority !== null && (
+            <div className="flex items-start gap-3">
+              <Tag className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-gray-600 mb-1">Priority</div>
+                <div className="text-sm text-gray-900">{ticket.priority}</div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-start gap-3">
+            <Users className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-gray-600 mb-1">Participants</div>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {ticket.people.map((person, idx) => {
+                  const personColor = getUserColor(person);
+                  return (
+                    <div
+                      key={idx}
+                      className={`w-7 h-7 rounded-full ${personColor.bg} ${personColor.text} flex items-center justify-center border border-gray-300 shadow-sm`}
+                      title={person}
+                    >
+                      <span className="text-xs font-medium">{getUserInitials(person)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <Calendar className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-gray-600 mb-1">Created</div>
+              <div className="text-sm text-gray-900">
+                {new Date(ticket.created_at).toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="bg-white border border-red-200 rounded-md p-4 shadow-sm">
+        <h3 className="text-gray-900 font-semibold mb-2">Danger Zone</h3>
+        <p className="text-xs text-gray-600 mb-4">
+          Deleting this ticket will permanently remove it and all associated messages. This action cannot be undone.
+        </p>
+        <HoldToDeleteButton onDelete={onDelete} label="Hold to Delete Ticket" />
       </div>
     </div>
   );
