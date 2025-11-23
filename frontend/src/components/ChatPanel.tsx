@@ -174,6 +174,13 @@ Do NOT make any code changes - just provide guidance.`;
         thinkingMessage = '⚙️ Working on it...';
       }
 
+      // Map commandType to agent type
+      const agentType: 'architect' | 'dev' | undefined = 
+        commandType === 'make_plan' ? 'architect' :
+        commandType === 'dev' ? 'dev' :
+        commandType === 'chat' ? 'dev' :
+        undefined;
+
       // Create a temporary "thinking" message
       await createMessage({
         ticket_id: ticketDbId,
@@ -181,7 +188,7 @@ Do NOT make any code changes - just provide guidance.`;
         message_type: 'agent',
         content: thinkingMessage,
         metadata: {
-          agent: commandType,
+          agent: agentType,
           streaming: true,
         },
       });
@@ -200,7 +207,7 @@ Do NOT make any code changes - just provide guidance.`;
           message_type: 'agent',
           content: fullResponse || 'No response received.',
           metadata: {
-            agent: commandType,
+            agent: agentType,
           },
         });
 
@@ -450,7 +457,7 @@ Do NOT make any code changes - just provide guidance.`;
           message_type: 'agent',
           content: '💭 Thinking...',
           metadata: {
-            agent: 'chat',
+    agent: 'dev',
             streaming: true,
           },
         });
@@ -472,7 +479,7 @@ Do NOT make any code changes - just provide guidance.`;
             message_type: 'agent',
             content: fullResponse || 'No response received.',
             metadata: {
-              agent: 'chat',
+              agent: 'dev',
             },
           });
 
@@ -664,17 +671,17 @@ Do NOT make any code changes - just provide guidance.`;
             }
 
                     if (message.message_type === 'agent') {
-                      return (
-                        <AgentMessage
+              return (
+                <AgentMessage
                           key={message.id}
-                          content={message.content || ''}
+                  content={message.content || ''}
                           agent={message.metadata?.agent || 'dev'}
                           author={message.user_or_agent}
                           timestamp={formattedTimestamp}
                           metadata={message.metadata || undefined}
-                        />
-                      );
-                    }
+                />
+              );
+            }
 
                 if (message.message_type === 'architect-plan') {
                   return <ArchitectPlanCard key={message.id} timestamp={formattedTimestamp} />;
