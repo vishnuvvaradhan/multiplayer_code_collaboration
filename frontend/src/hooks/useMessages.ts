@@ -7,6 +7,7 @@ import { getPollingInterval } from '@/lib/supabase';
 interface UseMessagesOptions {
   ticketId: string | null;
   enabled?: boolean;
+  onNewMessage?: (message: Message) => void;
 }
 
 interface UseMessagesReturn {
@@ -16,7 +17,7 @@ interface UseMessagesReturn {
   refetch: () => Promise<void>;
 }
 
-export function useMessages({ ticketId, enabled = true }: UseMessagesOptions): UseMessagesReturn {
+export function useMessages({ ticketId, enabled = true, onNewMessage }: UseMessagesOptions): UseMessagesReturn {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,12 +63,17 @@ export function useMessages({ ticketId, enabled = true }: UseMessagesOptions): U
       if (newMessages.length > 0) {
         setMessages((prev) => [...prev, ...newMessages]);
         lastTimestampRef.current = newMessages[newMessages.length - 1].timestamp;
+        
+        // Notify about each new message (for command detection)
+        if (onNewMessage) {
+          newMessages.forEach((msg) => onNewMessage(msg));
+        }
       }
     } catch (err) {
       console.error('Error polling messages:', err);
       // Don't set error state for polling failures to avoid UI disruption
     }
-  }, [ticketId]);
+  }, [ticketId, onNewMessage]);
 
   // Initial fetch
   useEffect(() => {

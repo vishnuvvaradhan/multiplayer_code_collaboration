@@ -6,6 +6,13 @@ import { getUserColor, getUserInitials, getTicketByIdentifier, deleteTicket, get
 import { Ticket } from '@/lib/supabase';
 import { HoldToDeleteButton } from './HoldToDeleteButton';
 import { toast } from 'sonner';
+import { X, Check, FileCode, GitPullRequest, Clock, Loader2, FileText } from 'lucide-react';
+import { DiffView } from './DiffView';
+import { PRView } from './PRView';
+import { getUserColor, getUserInitials, getMessagesByTicketId, createMessage, getTicketByIdentifier } from '@/lib/database';
+import { executeCommand, getTicketContext } from '@/lib/backend-api';
+import { toast } from 'sonner';
+import { Button } from './ui/button';
 
 interface RightPanelProps {
   ticketId: string;
@@ -55,6 +62,45 @@ export function RightPanel({ ticketId, onClose, onTicketDeleted }: RightPanelPro
       });
     }
   };
+  const [planExists, setPlanExists] = useState(false);
+  const [prExists, setPrExists] = useState(false);
+  const [prLink, setPrLink] = useState<string | undefined>(undefined);
+  const [generating, setGenerating] = useState(false);
+  const [ticketDbId, setTicketDbId] = useState<string | null>(null);
+
+  // Check if plan and PR exist
+  useEffect(() => {
+    async function checkExistence() {
+      try {
+        const ticket = await getTicketByIdentifier(ticketId);
+        if (!ticket) return;
+        
+        setTicketDbId(ticket.id);
+        
+        const messages = await getMessagesByTicketId(ticket.id);
+        
+        // Check if plan exists (look for architect-plan message or plan content)
+        const hasPlan = messages.some(m => 
+          m.message_type === 'architect-plan' || 
+          (m.message_type === 'agent' && m.metadata?.agent === 'plan')
+        );
+        setPlanExists(hasPlan);
+        
+        // Check if PR exists (look for PR message or PR link)
+        const prMessage = messages.find(m => 
+          m.message_type === 'agent' && m.metadata?.agent === 'dev' && m.metadata?.prLink
+        );
+        if (prMessage) {
+          setPrExists(true);
+          setPrLink(prMessage.metadata?.prLink);
+        }
+      } catch (error) {
+        console.error('Error checking plan/PR existence:', error);
+      }
+    }
+    
+    checkExistence();
+  }, [ticketId]);
 
   return (
     <div className="w-96 border-l border-amber-800/20 flex flex-col shadow-lg" style={{ backgroundColor: '#F5F1EB' }}>
@@ -102,14 +148,179 @@ export function RightPanel({ ticketId, onClose, onTicketDeleted }: RightPanelPro
         {activeTab === 'changes' && <DiffView />}
         {activeTab === 'pr' && <PRView />}
         {activeTab === 'settings' && <SettingsTab ticket={ticket} loading={loading} onDelete={handleDelete} />}
+        {activeTab === 'plan' && (
+          <PlanTab 
+            ticketId={ticketId}
+            ticketDbId={ticketDbId}
+            planExists={planExists}
+            generating={generating}
+            onGeneratePlan={async () => {
+              if (!ticketDbId) {
+                toast.error('Ticket not found');
+                return;
+              }
+              
+              setGenerating(true);
+              try {
+                // Get context
+                const context = await getTicketContext(ticketId);
+                
+                // Create system message
+                await createMessage({
+                  ticket_id: ticketDbId,
+                  user_or_agent: 'System',
+                  message_type: 'system',
+                  content: planExists ? '🔄 Updating plan based on feedback...' : '📝 Generating implementation plan...',
+                });
+                
+                // Stream the plan generation
+                let fullPlan = '';
+                for await (const chunk of executeCommand(ticketId, 'make_plan')) {
+                  fullPlan += chunk;
+                }
+                
+                // Save plan to database
+                await createMessage({
+                  ticket_id: ticketDbId,
+                  user_or_agent: 'Architect',
+                  message_type: 'agent',
+                  content: fullPlan,
+                  metadata: {
+                    agent: 'plan',
+                  },
+                });
+                
+                setPlanExists(true);
+                toast.success('Plan generated successfully!');
+              } catch (error) {
+                console.error('Error generating plan:', error);
+                toast.error('Failed to generate plan', {
+                  description: error instanceof Error ? error.message : 'Please try again',
+                });
+              } finally {
+                setGenerating(false);
+              }
+            }}
+          />
+        )}
+        {activeTab === 'changes' && <DiffView prLink={prLink} />}
+        {activeTab === 'pr' && (
+          <PRView 
+            ticketId={ticketId}
+            ticketDbId={ticketDbId}
+            planExists={planExists}
+            prExists={prExists}
+            generating={generating}
+            onGeneratePR={async () => {
+              if (!ticketDbId) {
+                toast.error('Ticket not found');
+                return;
+              }
+              
+              if (!planExists) {
+                toast.error('Please generate a plan first');
+                return;
+              }
+              
+              setGenerating(true);
+              try {
+                // Create system message
+                await createMessage({
+                  ticket_id: ticketDbId,
+                  user_or_agent: 'System',
+                  message_type: 'system',
+                  content: '🚀 Generating PR and implementing changes...',
+                });
+                
+                // Stream the PR generation
+                let fullOutput = '';
+                for await (const chunk of executeCommand(ticketId, 'dev')) {
+                  fullOutput += chunk;
+                }
+                
+                // Extract PR link from output (look for special marker or URL pattern)
+                let prLink = null;
+                const markerMatch = fullOutput.match(/_PR_URL_(https:\/\/github\.com\/[^\s]+)_END_/);
+                if (markerMatch) {
+                  prLink = markerMatch[1];
+                } else {
+                  // Fallback to generic URL pattern
+                  const prLinkMatch = fullOutput.match(/https:\/\/github\.com\/[^\s]+\/pull\/\d+/);
+                  prLink = prLinkMatch ? prLinkMatch[0] : null;
+                }
+                
+                // Save PR info to database
+                await createMessage({
+                  ticket_id: ticketDbId,
+                  user_or_agent: 'Developer',
+                  message_type: 'agent',
+                  content: prLink 
+                    ? `✅ Implementation complete!\n\nPull Request: ${prLink}\n\n${fullOutput}`
+                    : `✅ Implementation complete!\n\n${fullOutput}`,
+                  metadata: {
+                    agent: 'dev',
+                    prLink: prLink || undefined,
+                  },
+                });
+                
+                if (prLink) {
+                  setPrLink(prLink);
+                  setPrExists(true);
+                }
+                
+                toast.success(prLink ? 'PR generated successfully!' : 'Changes applied successfully!', {
+                  description: prLink ? 'Click to view PR' : 'Changes committed to branch',
+                  action: prLink ? {
+                    label: 'View PR',
+                    onClick: () => window.open(prLink, '_blank'),
+                  } : undefined,
+                });
+              } catch (error) {
+                console.error('Error generating PR:', error);
+                toast.error('Failed to generate PR', {
+                  description: error instanceof Error ? error.message : 'Please try again',
+                });
+              } finally {
+                setGenerating(false);
+              }
+            }}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function PlanTab() {
+interface PlanTabProps {
+  ticketId: string;
+  ticketDbId: string | null;
+  planExists: boolean;
+  generating: boolean;
+  onGeneratePlan: () => Promise<void>;
+}
+
+function PlanTab({ ticketId, ticketDbId, planExists, generating, onGeneratePlan }: PlanTabProps) {
   return (
     <div className="p-4 space-y-4">
+      {/* Action Button */}
+      <Button
+        onClick={onGeneratePlan}
+        disabled={generating || !ticketDbId}
+        className="w-full"
+        variant={planExists ? "outline" : "default"}
+      >
+        {generating ? (
+          <>
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            {planExists ? 'Updating Plan...' : 'Creating Plan...'}
+          </>
+        ) : (
+          <>
+            <FileText className="w-4 h-4 mr-2" />
+            {planExists ? 'Update Plan' : 'Create Plan'}
+          </>
+        )}
+      </Button>
       {/* PRD Card */}
       <div className="bg-white border border-gray-300 rounded-md p-4 shadow-sm">
         <div className="flex items-start justify-between mb-3 pb-3 border-b border-gray-200">

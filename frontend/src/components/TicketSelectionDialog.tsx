@@ -19,6 +19,7 @@ import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { toast } from 'sonner';
+import { createTicketWorkspace } from '../lib/backend-api';
 import { 
   GitHubRepository, 
   getGitHubOAuthUrl, 
@@ -316,6 +317,31 @@ export function TicketSelectionDialog({
           message_type: 'system',
           content: `Ticket ${selectedTicket.identifier} created`,
         });
+
+        // Create ticket workspace in backend (clone/load repo)
+        try {
+          const backendResponse = await createTicketWorkspace(
+            selectedTicket.identifier,
+            repositoryInfo.url
+          );
+          
+          // Create system message about backend setup
+          await createMessage({
+            ticket_id: dbTicket.id,
+            user_or_agent: 'System',
+            message_type: 'system',
+            content: `Repository workspace initialized: ${backendResponse.message}`,
+          });
+        } catch (backendError) {
+          console.error('Error creating backend workspace:', backendError);
+          // Don't fail the whole flow, just notify
+          await createMessage({
+            ticket_id: dbTicket.id,
+            user_or_agent: 'System',
+            message_type: 'system',
+            content: `⚠️ Warning: Could not initialize backend workspace. Backend may be offline.`,
+          });
+        }
 
         toast.success('Group created successfully!', {
           description: `${selectedTicket.identifier}: ${selectedTicket.title}`,

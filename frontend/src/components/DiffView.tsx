@@ -1,8 +1,32 @@
-import { FileCode } from 'lucide-react';
+import { FileCode, ExternalLink } from 'lucide-react';
+import { Button } from './ui/button';
 
-export function DiffView() {
+interface DiffViewProps {
+  prLink?: string;
+}
+
+export function DiffView({ prLink }: DiffViewProps) {
   return (
     <div className="p-6 space-y-4">
+      {/* PR Link if available */}
+      {prLink && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-sm font-medium text-green-900 mb-1">Pull Request Created</h4>
+              <p className="text-xs text-green-700">View the full diff and changes on GitHub</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.open(prLink, '_blank')}
+            >
+              <ExternalLink className="w-4 h-4 mr-2" />
+              View PR
+            </Button>
+          </div>
+        </div>
+      )}
       {/* File 1 */}
       <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden shadow-sm">
         <div className="px-4 py-3 bg-gray-900 border-b border-gray-800 flex items-center gap-2">

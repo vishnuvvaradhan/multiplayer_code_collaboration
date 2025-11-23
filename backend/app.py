@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import os
 import subprocess
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from sse_starlette import EventSourceResponse
@@ -32,10 +33,26 @@ from gemini_module import gemini_chat, gemini_make_plan, gemini_dev
 
 app = FastAPI()
 
+# Add CORS middleware to allow frontend to communicate with backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",  # Next.js dev server
+        "http://127.0.0.1:3000",  # Alternative localhost
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods (GET, POST, OPTIONS, etc.)
+    allow_headers=["*"],  # Allow all headers
+)
+
 
 # ==================================================
 # Models
 # ==================================================
+class CreateTicketRequest(BaseModel):
+    ticket_id: str
+    repo_url: str
+
 class CommandRequest(BaseModel):
     ticket_id: str
     action: str              # "chat", "make_plan", "dev"
@@ -58,13 +75,21 @@ def ensure_workspace(ticket_id: str) -> Optional[str]:
 # Endpoints
 # ==================================================
 
+@app.get("/")
+def root():
+    """Health check endpoint"""
+    return {"status": "ok", "message": "Backend is running"}
+
 @app.post("/create_ticket")
-def create_ticket_endpoint(ticket_id: str, repo_url: str):
+def create_ticket_endpoint(request: CreateTicketRequest):
     """
     Create or load a ticket workspace:
     - If exists → pull latest + prepare ticket branch
     - If new   → clone repo + create ticket branch
     """
+    ticket_id = request.ticket_id
+    repo_url = request.repo_url
+    
     path = f"./tickets/{ticket_id}"
     branch_name = f"ticket_{ticket_id}"
 
