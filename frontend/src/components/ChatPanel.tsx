@@ -193,14 +193,23 @@ Do NOT make any code changes - just provide guidance.`;
         const cleanResponse = fullResponse
           .split('\n')
           .map(line => {
-            // Remove "data:" prefix if it exists at the start of the line
-            let cleaned = line.trim();
-            if (cleaned.startsWith('data:')) {
-              cleaned = cleaned.substring(5).trim();
+            // Remove "data:" prefix if it exists at the start of the line (case insensitive)
+            let cleaned = line;
+            // Handle both "data:" and "data: " (with space)
+            if (cleaned.trim().toLowerCase().startsWith('data:')) {
+              const dataIndex = cleaned.toLowerCase().indexOf('data:');
+              cleaned = cleaned.substring(dataIndex + 5).trimStart();
             }
             return cleaned;
           })
-          .filter(line => line && line !== '__END__' && line !== 'END') // Remove empty lines and markers
+          .filter(line => {
+            const trimmed = line.trim();
+            // Remove empty lines and end markers
+            return trimmed && 
+                   trimmed !== '__END__' && 
+                   trimmed !== 'END' &&
+                   !trimmed.toLowerCase().startsWith('data:');
+          })
           .join('\n')
           .trim();
 
@@ -544,6 +553,30 @@ Do NOT make any code changes - just provide guidance.`;
             fullResponse += chunk;
           }
 
+          // Clean up the response by removing any remaining SSE formatting artifacts
+          const cleanResponse = fullResponse
+            .split('\n')
+            .map(line => {
+              // Remove "data:" prefix if it exists at the start of the line (case insensitive)
+              let cleaned = line;
+              // Handle both "data:" and "data: " (with space)
+              if (cleaned.trim().toLowerCase().startsWith('data:')) {
+                const dataIndex = cleaned.toLowerCase().indexOf('data:');
+                cleaned = cleaned.substring(dataIndex + 5).trimStart();
+              }
+              return cleaned;
+            })
+            .filter(line => {
+              const trimmed = line.trim();
+              // Remove empty lines and end markers
+              return trimmed && 
+                     trimmed !== '__END__' && 
+                     trimmed !== 'END' &&
+                     !trimmed.toLowerCase().startsWith('data:');
+            })
+            .join('\n')
+            .trim();
+
           // Delete the thinking message before creating the actual response
           try {
             await deleteMessage(thinkingMsg.id);
@@ -558,7 +591,7 @@ Do NOT make any code changes - just provide guidance.`;
               ticket_id: ticketDbId,
               user_or_agent: 'Architect',
               message_type: 'architect-plan',
-              content: fullResponse,
+              content: cleanResponse,
               metadata: {
                 agent: 'architect',
               },
@@ -569,7 +602,7 @@ Do NOT make any code changes - just provide guidance.`;
               ticket_id: ticketDbId,
               user_or_agent: 'Developer',
               message_type: 'agent',
-              content: fullResponse || 'Implementation completed.',
+              content: cleanResponse || 'Implementation completed.',
               metadata: {
                 agent: 'dev',
               },
@@ -580,7 +613,7 @@ Do NOT make any code changes - just provide guidance.`;
               ticket_id: ticketDbId,
               user_or_agent: 'AI Assistant',
               message_type: 'agent',
-              content: fullResponse || 'No response received.',
+              content: cleanResponse || 'No response received.',
               metadata: {
                 agent: undefined,
               },
