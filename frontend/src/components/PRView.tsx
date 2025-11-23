@@ -8,10 +8,11 @@ interface PRViewProps {
   planExists: boolean;
   prExists: boolean;
   generating: boolean;
+  prLink?: string;
   onGeneratePR: () => Promise<void>;
 }
 
-export function PRView({ ticketId, ticketDbId, planExists, prExists, generating, onGeneratePR }: PRViewProps) {
+export function PRView({ ticketId, ticketDbId, planExists, prExists, generating, prLink, onGeneratePR }: PRViewProps) {
   const showPRActions = false;
 
   return (
@@ -53,14 +54,26 @@ export function PRView({ ticketId, ticketDbId, planExists, prExists, generating,
           </div>
           <div className="flex-1">
             <h3 className="text-white mb-1">
-              Add payment validation to checkout
+              {prLink ? 'Linked Pull Request' : 'No PR linked yet'}
             </h3>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-1 bg-green-900/30 text-green-400 rounded text-xs border border-green-800/50">
-                Open
-              </span>
-              <span className="text-xs text-gray-500">#247</span>
-            </div>
+            {prLink && (
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-1 bg-green-900/30 text-green-400 rounded text-xs border border-green-800/50">
+                  Open
+                </span>
+                <a
+                  href={prLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-blue-300 hover:text-blue-100"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  <span className="truncate max-w-[140px]">
+                    {prLink.replace('https://github.com/', '')}
+                  </span>
+                </a>
+              </div>
+            )}
           </div>
         </div>
 
