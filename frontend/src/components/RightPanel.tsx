@@ -292,27 +292,31 @@ interface PlanTabProps {
 }
 
 function PlanTab({ ticketId, ticketDbId, planExists, generating, onGeneratePlan }: PlanTabProps) {
+  const showPlanActions = false;
+
   return (
     <div className="p-4 space-y-4">
       {/* Action Button */}
-      <Button
-        onClick={onGeneratePlan}
-        disabled={generating || !ticketDbId}
-        className="w-full"
-        variant={planExists ? "outline" : "default"}
-      >
-        {generating ? (
-          <>
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            {planExists ? 'Updating Plan...' : 'Creating Plan...'}
-          </>
-        ) : (
-          <>
-            <FileText className="w-4 h-4 mr-2" />
-            {planExists ? 'Update Plan' : 'Create Plan'}
-          </>
-        )}
-      </Button>
+      {showPlanActions && (
+        <Button
+          onClick={onGeneratePlan}
+          disabled={generating || !ticketDbId}
+          className="w-full"
+          variant={planExists ? "outline" : "default"}
+        >
+          {generating ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              {planExists ? 'Updating Plan...' : 'Creating Plan...'}
+            </>
+          ) : (
+            <>
+              <FileText className="w-4 h-4 mr-2" />
+              {planExists ? 'Update Plan' : 'Create Plan'}
+            </>
+          )}
+        </Button>
+      )}
       {/* PRD Card */}
       <div className="bg-white border border-gray-300 rounded-md p-4 shadow-sm">
         <div className="flex items-start justify-between mb-3 pb-3 border-b border-gray-200">
